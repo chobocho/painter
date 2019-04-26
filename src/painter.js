@@ -197,7 +197,7 @@ function pointMouseMove(event) {
     cvs.stroke();
 
     var newPoint = drwaCommand();
-    newPoint.mode = "point";
+    newPoint.mode = "line";
     newPoint.X1 = { X: pos.X, Y: pos.Y };
     newPoint.X2 = { X: currentPos.X, Y: currentPos.Y };
     commandHistory.push(newPoint.toCommand());
