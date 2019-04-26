@@ -90,6 +90,7 @@ function point () {
 function drwaCommand () {
     return {
        mode : paintMode[0],
+       color : "white",
        filled : false,
        X1 : point(),
        X2 : point(),
@@ -99,6 +100,9 @@ function drwaCommand () {
            console.log("toCommand");
            var newCommand = this.mode + " ";
            switch(this.mode) {
+                case "color":
+                   newCommand += this.color + ";"
+                   break;                
                 case "point":
                    newCommand += this.X1.X + " " + this.X1.Y + " " +  this.X2.X + " " + this.X2.Y + ";"
                    break;
@@ -130,12 +134,6 @@ function getMousePosition(event) {
     return {X:x, Y:y};
 }
 
-function getMousePositionOfTool(event) {
-    var x = event.pageX - painter_tool.offsetLeft;
-    var y = event.pageY - painter_tool.offsetTop;
-    return {X:x, Y:y};
-}
-
 function mouseListener(event) {
     switch(event.type) {
         case "mousedown":
@@ -153,13 +151,19 @@ function mouseListener(event) {
     }
 }
 
-
 function selectColor(choosedColor) {
     console.log("selectColor:" + choosedColor);
     var colorTableIdx = {'red': 0, 'orange':1, 'yellow':2, 'green':3, 'blue':4, 'lightblue':5, 'lightgreen':6, 'brown':7,
                      'purple':8, 'pink':9, 'gray':10, 'lightgray':11, 'black':12, 'white':13};
     pos.color = choosedColor;
     pos.colorIdx = colorTableIdx[choosedColor];
+
+    var newColor = drwaCommand();
+    newColor.mode = "color";
+    newColor.color = choosedColor;
+    commandHistory.push(newColor.toCommand());
+    addHistory(newColor.toCommand());
+
 }
 
 function selectTool(choosedTool) {
