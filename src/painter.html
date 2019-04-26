@@ -1,0 +1,233 @@
+<html>
+  <head>
+    <title>Chobo painter</title>
+    <style>
+      canvas {
+        border: 1px solid blue;
+      }
+
+      .jb_table {
+        display: table;
+      }
+
+      .row {
+        border-radius: 10px;
+        display: table-row;
+      }
+
+      .cell {
+        display: table-cell;
+        vertical-align: top;
+      }
+
+      textarea {
+        background-color: #fcf3cf;
+      }
+    </style>
+    <script language="JavaScript">
+      // Date: 2019.04.24
+
+      var textareaList = ["history"];
+
+      function clearText(idOfTextArea) {
+        document.getElementById(idOfTextArea).value = "";
+      }
+
+      function SaveAsFile() {
+        var fileName = document.getElementById("title").value;
+        if (fileName.length == 0) {
+          fileName = "untitle";
+        }
+        fileName += ".json";
+
+        var preData = "";
+        textareaList.forEach(function(e) {
+          preData += e + ":\n";
+          preData += document.getElementById(e).value;
+          preData += "\n\n";
+        });
+
+        var postData = preData.replace(/\<br\>/gi, "\n");
+
+        var link = document.createElement("a");
+        link.setAttribute("download", fileName);
+        link.setAttribute(
+          "href",
+          "data:" +
+            "application/[txt]" +
+            ";charset=utf-8," +
+            encodeURIComponent(postData)
+        );
+        link.click();
+      }
+
+      function SaveAsJson() {
+        var fileName = document.getElementById("filename").value;
+        if (fileName.length == 0) {
+          fileName = "untitle";
+        }
+
+        fileName += ".json";
+
+        var preData = {};
+        textareaList.forEach(function(e) {
+          preData[e] = document.getElementById(e).value;
+        });
+
+        var jsonData = JSON.stringify(preData);
+
+        var link = document.createElement("a");
+        var file = new Blob([jsonData], { type: "text/plain" });
+        link.href = URL.createObjectURL(file);
+        link.download = fileName;
+        link.click();
+      }
+
+      function isJsonFile(filename) {
+        var ridx = filename.lastIndexOf(".");
+        var extension = filename.substring(ridx + 1);
+
+        console.log(extension);
+
+        if (extension.length != 4 || extension.toLowerCase() != "json") {
+          return false;
+        }
+        return true;
+      }
+
+      function LoadJson() {
+        var loadFile = document.getElementById("load_filename");
+
+        var file = loadFile.files[0];
+        if (!file) {
+          return;
+        }
+
+        var fileName = document.getElementById("load_filename").value;
+        var ridx = fileName.lastIndexOf("\\");
+
+        fileName = fileName.substring(ridx + 1);
+
+        if (!isJsonFile(fileName)) {
+          return;
+        }
+
+        document.getElementById("filename").value = fileName;
+
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var contents = e.target.result;
+          displayLoadData(contents);
+        };
+        reader.readAsText(file);
+      }
+
+      function displayLoadData(contents) {
+        var noteData = JSON.parse(contents);
+
+        dataList = ["title", "reduce", "record", "summary"];
+        dataList.forEach(function(e) {
+          document.getElementById(e).value = noteData[e];
+        });
+      }
+    </script>
+  </head>
+
+  <body>
+    <div class="jb_table">
+      <div class="row">
+        <span class="cell" width="82">
+          <div>
+            <div class="jb_table">
+              <div class="row">
+                <span class="cell">
+                  <img src="img/red.png" onclick="selectColor('red')" />
+                  <img src="img/orange.png" onclick="selectColor('orange')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/yellow.png" onclick="selectColor('yellow')" />
+                  <img src="img/green.png" onclick="selectColor('green')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/blue.png" onclick="selectColor('blue')" />
+                  <img src="img/lightblue.png" onclick="selectColor('lightblue')" />
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/lightgreen.png" onclick="selectColor('lightgreen')"/>
+                  <img src="img/brown.png" onclick="selectColor('brown')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/purple.png" onclick="selectColor('purple')" />
+                  <img src="img/pink.png" onclick="selectColor('pink')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/gray.png" onclick="selectColor('gray')" />
+                  <img src="img/lightgray.png" onclick="selectColor('lightgray')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/black.png" onclick="selectColor('black')"/>
+                  <img src="img/white.png" onclick="selectColor('white')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/pencil.png"  onclick="selectTool('pencil')" />
+                  <img src="img/line.png"  onclick="selectTool('line')" />
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/circle.png" onclick="selectTool('circle')"/>
+                  <img src="img/filledcircle.png" onclick="selectTool('filledcircle')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/square.png" onclick="selectTool('square')"/>
+                  <img src="img/filledsquare.png" onclick="selectTool('filledsquare')"/>
+                </span>
+              </div>
+              <div class="row">
+                <span class="cell">
+                  <img src="img/rect.png" onclick="selectTool('rect')" />
+                  <img src="img/filledrect.png" onclick="selectTool('filledrect')" />
+                </span>
+              </div>
+            </div>
+          </div>
+        </span>
+        <span class="cell">
+          <div>
+            <canvas id="canvas" width="720" height="720"></canvas>
+          </div>
+        </span>
+        <span class="cell">
+          <div>Title <input id="title" size="15" /></div>
+          <div>
+            <a id="saveImage" download="image.png">
+                <INPUT type="button" value="Save" onClick="saveImage()" />
+            </a>
+            <INPUT type="button" value="Clear" onClick="clearCanvas()" />
+          </div>
+          <div id="history">
+          </div>
+          <div id="command">
+          </div>
+        </span>
+      </div>
+    </div>
+    <script src="painter.js"></script>
+  </body>
+</html>
