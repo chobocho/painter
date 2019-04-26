@@ -205,6 +205,12 @@
                   <img src="img/filledrect.png" onclick="selectTool('filledrect')" />
                 </span>
               </div>
+              <div class="row">
+                  <span class="cell">
+                    <img src="img/undo.png" onclick="undo()"/>
+                    <img src="img/redo.png" onclick="redo()"/>
+                  </span>
+                </div>
             </div>
           </div>
         </span>
@@ -221,7 +227,8 @@
             </a>
             <INPUT type="button" value="Clear" onClick="clearCanvas()" />
           </div>
-          <div id="history">
+          <div>
+            <textarea id="history" cols="40" rows="37"></textarea>
           </div>
           <div id="command">
           </div>

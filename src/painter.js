@@ -4,6 +4,8 @@ var canvas;
 var bufCanvas;
 var bufCtx;
 
+var commandHistory = [];
+
 var paintMode = [
     "point",
     "line",
@@ -78,6 +80,50 @@ var pos = {
     }
 };
 
+function point () {
+    return {
+       X : 0,
+       Y : 0
+    };
+}
+
+function drwaCommand () {
+    return {
+       mode : paintMode[0],
+       filled : false,
+       X1 : point(),
+       X2 : point(),
+       R : 0,
+       lines : [],
+       toCommand : function() {
+           console.log("toCommand");
+           var newCommand = this.mode + " ";
+           switch(this.mode) {
+                case "point":
+                   newCommand += this.X1.X + " " + this.X1.Y + " " +  this.X2.X + " " + this.X2.Y + ";"
+                   break;
+               case "line":
+                   newCommand += this.X1.X + " " + this.X1.Y + " " +  this.X2.X + " " + this.X2.Y + ";"
+                   break;
+               case "circle":
+                   newCommand += this.X1.X + " " + this.X1.Y + " " +  this.R + " " + this.filled +  ";"
+                   break;
+                case "square":
+                   newCommand += this.X1.X + " " + this.X1.Y + " " +  this.X2.X + " " + this.X2.Y + " " + this.filled + ";"
+                   break;
+                case "rect":
+                   newCommand += this.X1.X + " " + this.X1.Y + " " +  this.X2.X + " " + this.X2.Y + " " + this.filled + ";"
+                   break;
+               default:
+                   break;
+           }
+           
+           console.log("toCommand: " + newCommand);
+           return newCommand;
+       }
+    };
+}
+
 function getMousePosition(event) {
     var x = event.pageX - canvas.offsetLeft;
     var y = event.pageY - canvas.offsetTop;
@@ -136,12 +182,25 @@ function pointMouseDown(event) {
     var startPos = getMousePosition(event);
     cvs.moveTo(startPos.X, startPos.Y);
     cvs.stroke();
+    pos.X = startPos.X;
+    pos.Y = startPos.Y;
 }
 
 function pointMouseMove(event) {
     var currentPos = getMousePosition(event);
+
     cvs.lineTo(currentPos.X, currentPos.Y);
     cvs.stroke();
+
+    var newPoint = drwaCommand();
+    newPoint.mode = "point";
+    newPoint.X1 = { X: pos.X, Y: pos.Y };
+    newPoint.X2 = { X: currentPos.X, Y: currentPos.Y };
+    commandHistory.push(newPoint.toCommand());
+    addHistory(newPoint.toCommand());
+
+    pos.X = currentPos.X;
+    pos.Y = currentPos.Y;
 }
 
 function pointMouseUp(event) {
@@ -187,6 +246,14 @@ function lineMouseUp(event) {
         bufCtx.closePath();
         bufCtx.stroke();
         cvs.drawImage(bufCanvas, 0, 0);
+        
+        var newLine = drwaCommand();
+        newLine.mode = "line";
+        newLine.X1 = { X: pos.X, Y: pos.Y };
+        newLine.X2 = { X: currentPos.X, Y: currentPos.Y };
+        commandHistory.push(newLine.toCommand());
+        addHistory(newLine.toCommand());
+
         pos.isDraw = false;
     }
 }
@@ -249,6 +316,15 @@ function circleMouseUp(event) {
         bufCtx.closePath();
         bufCtx.stroke();
         cvs.drawImage(bufCanvas, 0, 0);
+
+        var newCircle = drwaCommand();
+        newCircle.mode = "circle";
+        newCircle.filled = pos.filled;
+        newCircle.X1 = { X: circle.X, Y: circle.Y };
+        newCircle.R = circle.R;
+        commandHistory.push(newCircle.toCommand());
+        addHistory(newCircle.toCommand());
+
         pos.isDraw = false;
     }
 }
@@ -307,6 +383,15 @@ function squareMouseUp(event) {
         bufCtx.closePath();
         bufCtx.stroke();
         cvs.drawImage(bufCanvas, 0, 0);
+
+        var newSqure = drwaCommand();
+        newSqure.mode = "square";
+        newSqure.filled = pos.filled;
+        newSqure.X1 = { X: pos.X, Y: pos.Y };
+        newSqure.X2 = { X: currentPos.X, Y: currentPos.Y };
+        commandHistory.push(newSqure.toCommand());
+        addHistory(newSqure.toCommand());
+
         pos.isDraw = false;
     }
 }
@@ -366,6 +451,15 @@ function rectMouseUp(event) {
         bufCtx.closePath();
         bufCtx.stroke();
         cvs.drawImage(bufCanvas, 0, 0);
+
+        var newRect = drwaCommand();
+        newRect.mode = "rect";
+        newRect.filled = pos.filled;
+        newRect.X1 = { X: pos.X, Y: pos.Y };
+        newRect.X2 = { X: currentPos.X, Y: currentPos.Y };
+        commandHistory.push(newRect.toCommand());
+        addHistory(newRect.toCommand());
+
         pos.isDraw = false;
     }
 }
@@ -385,13 +479,38 @@ function saveImage() {
     saveedImage.setAttribute("href", image);
 }
 
+function addHistory(cmd) {
+    var history = document.getElementById("history").value;
+    history += cmd + '\n';
+    console.log(history);
+    document.getElementById("history").value = history;
+}
+
 function clearCanvas() {
     console.log("clearCanvas()");
     cvs.clearRect(0, 0, canvas.width, canvas.height);
     bufCtx.clearRect(0, 0, canvas.width, canvas.height);
+    commandHistory = [];
+    document.getElementById("history").value = "";
+}
+
+function undo() {
+    console.log("undo");
+}
+
+function redo() {
+    console.log("redo");
+}
+
+function initPage() {
+    console.log("initPage()");
+    commandHistory = [];
+    document.getElementById("history").value = "";
 }
 
 function onLoadPage() {
+    initPage();
+
     canvas = document.getElementById("canvas");
     cvs = canvas.getContext("2d");
 
