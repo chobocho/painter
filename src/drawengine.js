@@ -3,9 +3,12 @@ function drawengine(targetCanvas, tarageCtx,  targetBufCanvas, targetBufctx, cmd
 
     cmdList.forEach(function(e) {
         // console.log(e);
-        var cmd = e.split(' ');
-        // console.log(cmd);
-        processCmd(cmd, targetBufctx);
+        // console.log(e.length);
+        if (e.length > 0) {
+            var cmd = e.split(' ');
+            // console.log(cmd);
+            processCmd(cmd, targetBufctx);
+        }
     });
 
     tarageCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);

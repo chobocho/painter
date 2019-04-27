@@ -696,7 +696,12 @@ function initPage() {
 function reDrawCanvas() {
   console.log("reDrawCanvas");
   clearCanvas();
-  drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
+  commandHistory = [];
+
+  var history =  document.getElementById("history").value.split('\n');
+  console.log(history)
+
+  drawengine(canvas, cvs, bufCanvas, bufCtx, history);
 }
 
 function onLoadPage() {
