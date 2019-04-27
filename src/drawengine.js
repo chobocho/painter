@@ -34,7 +34,6 @@ function processColor(cmd, targetBufctx) {
 function processLine(cmd, targetBufctx) {
     console.log("processLine");
     targetBufctx.beginPath();
-
     targetBufctx.strokeStyle = enginePos.color;
 
     var X1 = {
@@ -76,6 +75,7 @@ function processCircle(cmd, targetBufctx) {
     } 
 
     targetBufctx.closePath();
+    targetBufctx.stroke();
 }
 
 function processRect(cmd, targetBufctx) {
@@ -113,6 +113,39 @@ function processRect(cmd, targetBufctx) {
 
 function processTri(cmd, targetBufctx) {
     console.log("processTri");
+
+    targetBufctx.beginPath();
+    targetBufctx.strokeStyle = enginePos.color;
+
+    var filled = (cmd[7] == 'F') ? true : false;
+
+    var X1 = {
+        X:parseInt(cmd[1]),
+        Y:parseInt(cmd[2])
+    }
+    
+    var X2= {
+        X:parseInt(cmd[3]),
+        Y:parseInt(cmd[4])   
+    }
+
+    var X3= {
+        X:parseInt(cmd[5]),
+        Y:parseInt(cmd[6])   
+    }
+
+    targetBufctx.moveTo(X1.X, X1.Y);
+    targetBufctx.lineTo(X2.X, X2.Y);
+    targetBufctx.lineTo(X3.X, X3.Y);
+    targetBufctx.lineTo(X1.X, X1.Y);
+    targetBufctx.stroke();
+
+    if (filled) {
+        targetBufctx.fillStyle = enginePos.color;
+        targetBufctx.fill();
+      } 
+
+    targetBufctx.closePath();
 }
 
 function processCmd(cmd, targetBufctx) {
