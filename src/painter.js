@@ -352,25 +352,27 @@ function circleMouseMove(event) {
   console.log("circleMouseMove");
   var currentPos = getMousePosition(event);
   cvs.beginPath();
-  // Need a delay
+
   cvs.clearRect(0, 0, canvas.width, canvas.height);
   cvs.drawImage(bufCanvas, 0, 0);
-  cvs.strokeStyle = pos.color;
+  cvs.strokeStyle = "black";
+
   var circle = {
     X: Math.round((pos.X + currentPos.X) / 2),
     Y: Math.round((pos.Y + currentPos.Y) / 2),
     R: Math.round(Math.abs(currentPos.Y - pos.Y) / 2)
   };
 
+  cvs.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
+
   if (pos.filled) {
     cvs.fillStyle = pos.color;
-    cvs.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
     cvs.fill();
-  } else {
-    cvs.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
-  }
+  } 
+
   cvs.closePath();
   cvs.stroke();
+  cvs.strokeStyle = pos.color;
 }
 
 function circleMouseUp(event) {
@@ -384,15 +386,18 @@ function circleMouseUp(event) {
       Y: Math.round((pos.Y + currentPos.Y) / 2),
       R: Math.round(Math.abs(currentPos.Y - pos.Y) / 2)
     };
+
+    bufCtx.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
+
     if (pos.filled) {
       bufCtx.fillStyle = pos.color;
-      bufCtx.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
       bufCtx.fill();
-    } else {
-      bufCtx.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
-    }
+    } 
+    
     bufCtx.closePath();
     bufCtx.stroke();
+
+    cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
     var newCircle = drwaCommand();
@@ -423,23 +428,25 @@ function squareMouseMove(event) {
   console.log("rectMouseMove");
   var currentPos = getMousePosition(event);
   cvs.beginPath();
-  // Need a delay
+
   cvs.clearRect(0, 0, canvas.width, canvas.height);
   cvs.drawImage(bufCanvas, 0, 0);
+  cvs.strokeStyle = "black";
 
-  cvs.strokeStyle = pos.color;
   var box = {
     W: currentPos.Y - pos.Y,
     H: currentPos.Y - pos.Y
   };
+
   if (pos.filled) {
     cvs.fillStyle = pos.color;
     cvs.fillRect(pos.X, pos.Y, box.W, box.H);
-  } else {
-    cvs.strokeRect(pos.X, pos.Y, box.W, box.H);
-  }
+  } 
+
+  cvs.strokeRect(pos.X, pos.Y, box.W, box.H);
   cvs.closePath();
   cvs.stroke();
+  cvs.strokeStyle = pos.color;
 }
 
 function squareMouseUp(event) {
@@ -460,6 +467,8 @@ function squareMouseUp(event) {
     }
     bufCtx.closePath();
     bufCtx.stroke();
+
+    cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
     var newSqure = drwaCommand();
@@ -490,24 +499,26 @@ function rectMouseMove(event) {
   console.log("rectMouseMove");
   var currentPos = getMousePosition(event);
   cvs.beginPath();
-  // Need a delay
+  
   cvs.clearRect(0, 0, canvas.width, canvas.height);
   cvs.drawImage(bufCanvas, 0, 0);
 
-  cvs.strokeStyle = pos.color;
+  cvs.strokeStyle = "black";
   var box = {
     W: currentPos.X - pos.X,
     H: currentPos.Y - pos.Y
   };
 
+  cvs.strokeRect(pos.X, pos.Y, box.W, box.H);
+
   if (pos.filled) {
     cvs.fillStyle = pos.color;
     cvs.fillRect(pos.X, pos.Y, box.W, box.H);
-  } else {
-    cvs.strokeRect(pos.X, pos.Y, box.W, box.H);
-  }
-  cvs.closePath();
+  } 
+
   cvs.stroke();
+  cvs.closePath();
+  cvs.strokeStyle = pos.color;
 }
 
 function rectMouseUp(event) {
@@ -528,6 +539,8 @@ function rectMouseUp(event) {
     }
     bufCtx.closePath();
     bufCtx.stroke();
+
+    cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
     var newRect = drwaCommand();
@@ -557,7 +570,7 @@ function triMouseDown(event) {
 function triMouseMove(event) {
   console.log("triMouseMove");
   var currentPos = getMousePosition(event);
-  // Need a delay
+
   cvs.clearRect(0, 0, canvas.width, canvas.height);
   cvs.drawImage(bufCanvas, 0, 0);
 
@@ -571,20 +584,21 @@ function triMouseMove(event) {
   };
 
   cvs.beginPath();
-  cvs.strokeStyle = pos.color;
+  cvs.strokeStyle = "black";
 
   cvs.moveTo(pos.X, pos.Y);
   cvs.lineTo(currentPos.X, currentPos.Y);
   cvs.lineTo(tri.P.X, tri.P.Y);
   cvs.lineTo(pos.X, pos.Y);
+  cvs.stroke();
 
   if (pos.filled) {
     cvs.fillStyle = pos.color;
     cvs.fill();
-  } else {
-    cvs.stroke();
-  }
+  } 
+
   cvs.closePath();
+  cvs.strokeStyle = pos.color;
 }
 
 function triMouseUp(event) {
@@ -608,14 +622,14 @@ function triMouseUp(event) {
     bufCtx.lineTo(currentPos.X, currentPos.Y);
     bufCtx.lineTo(tri.P.X, tri.P.Y);
     bufCtx.lineTo(pos.X, pos.Y);
-  
+    bufCtx.stroke();
+
     if (pos.filled) {
       bufCtx.fillStyle = pos.color;
       bufCtx.fill();
-    } else {
-      bufCtx.stroke();
-    }
+    } 
 
+    cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
     var newTriangle = drwaCommand();
