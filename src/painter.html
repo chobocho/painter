@@ -233,7 +233,7 @@
                 <INPUT type="button" value="Save" onClick="saveImage()" />
             </a>
             <input type="button" value="Save as Json" onClick="SaveAsJson()" />
-            <INPUT type="button" value="Clear" onClick="clearCanvas()" />
+            <INPUT type="button" value="Clear" onClick="initPage()" />
             <INPUT type="button" value="History" onClick="showHistory()" />
           </div>
           <div>
@@ -241,9 +241,13 @@
           </div>
           <div id="command">
           </div>
+              <INPUT type="button" value="Redraw" onClick="reDrawCanvas()" />
+          <div>
+          </div>
         </span>
       </div>
     </div>
     <script src="painter.js"></script>
+    <script src="drawengine.js"></script>
   </body>
 </html>

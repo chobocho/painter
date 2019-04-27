@@ -110,22 +110,12 @@ function drwaCommand() {
     toCommand: function() {
       console.log("toCommand");
       var newCommand = this.mode + " ";
-      var isFilled = this.isFilled == true ? 'F' : 'E';
+      var isFilled = this.filled == true ? 'F' : 'E';
       switch (this.mode) {
         case "color":
-          newCommand += this.color + ";";
+          newCommand += this.color;
           break;
         case "point":
-          newCommand +=
-            this.X1.X +
-            " " +
-            this.X1.Y +
-            " " +
-            this.X2.X +
-            " " +
-            this.X2.Y +
-            ";";
-          break;
         case "line":
           newCommand +=
             this.X1.X +
@@ -134,8 +124,7 @@ function drwaCommand() {
             " " +
             this.X2.X +
             " " +
-            this.X2.Y +
-            ";";
+            this.X2.Y;
           break;
         case "circle":
           newCommand +=
@@ -145,8 +134,7 @@ function drwaCommand() {
             " " +
             this.R +
             " " +
-            isFilled +
-            ";";
+            isFilled;
           break;
         case "square":
         case "rect":
@@ -159,8 +147,7 @@ function drwaCommand() {
             " " +
             this.X2.Y +
             " " +
-            isFilled +
-            ";";
+            isFilled;
           break;
         case "tri":
           newCommand +=
@@ -176,8 +163,7 @@ function drwaCommand() {
             " " +
             this.X3.Y +
             " " +
-            isFilled +
-            ";";
+            isFilled;
           break;
         default:
           break;
@@ -475,7 +461,7 @@ function squareMouseUp(event) {
     newSqure.mode = "square";
     newSqure.filled = pos.filled;
     newSqure.X1 = { X: pos.X, Y: pos.Y };
-    newSqure.X2 = { X: currentPos.X, Y: currentPos.Y };
+    newSqure.X2 = { X: (pos.X + box.H), Y: currentPos.Y };
     commandHistory.push(newSqure.toCommand());
     addHistory(newSqure.toCommand());
 
@@ -665,7 +651,7 @@ function saveImage() {
 function addHistory(cmd) {
   var history = document.getElementById("history").value;
   history += cmd + "\n";
-  console.log(history);
+  //console.log(history);
   document.getElementById("history").value = history;
 }
 
@@ -673,8 +659,17 @@ function clearCanvas() {
   console.log("clearCanvas()");
   cvs.clearRect(0, 0, canvas.width, canvas.height);
   bufCtx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function initHistory() {
   commandHistory = [];
   document.getElementById("history").value = "";
+
+  var newColor = drwaCommand();
+  newColor.mode = "color";
+  newColor.color = "red";
+  commandHistory.push(newColor.toCommand());
+  addHistory(newColor.toCommand());
 }
 
 function showHistory() {
@@ -692,19 +687,19 @@ function redo() {
 
 function initPage() {
   console.log("initPage()");
-  commandHistory = [];
-  document.getElementById("history").value = "";
 
-  var newColor = drwaCommand();
-  newColor.mode = "color";
-  newColor.color = "red";
-  commandHistory.push(newColor.toCommand());
-  addHistory(newColor.toCommand());
+  clearCanvas();
+  initHistory();
+}
+
+
+function reDrawCanvas() {
+  console.log("reDrawCanvas");
+  clearCanvas();
+  drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
 }
 
 function onLoadPage() {
-  initPage();
-
   canvas = document.getElementById("canvas");
   cvs = canvas.getContext("2d");
 
@@ -717,6 +712,8 @@ function onLoadPage() {
   canvas.addEventListener("mousemove", mouseListener);
   canvas.addEventListener("mouseout", mouseListener);
   canvas.addEventListener("mouseup", mouseListener);
+
+  initPage();
 }
 
 window.onload = onLoadPage();
