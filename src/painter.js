@@ -283,9 +283,9 @@ function circleMouseMove(event) {
     cvs.drawImage(bufCanvas, 0, 0);
     cvs.strokeStyle = pos.color;
     var circle = {
-        X : (pos.X + currentPos.X)/ 2,
-        Y : (pos.Y + currentPos.Y)/ 2,
-        R : Math.abs(currentPos.Y - pos.Y) / 2
+        X : Math.round((pos.X + currentPos.X)/ 2),
+        Y : Math.round((pos.Y + currentPos.Y)/ 2),
+        R : Math.round(Math.abs(currentPos.Y - pos.Y) / 2)
     };
 
     if (pos.filled) {
@@ -306,9 +306,9 @@ function circleMouseUp(event) {
         bufCtx.beginPath();
         bufCtx.strokeStyle = pos.color;
         var circle = {
-            X : (pos.X + currentPos.X)/ 2,
-            Y : (pos.Y + currentPos.Y)/ 2,
-            R : Math.abs(currentPos.Y - pos.Y) / 2
+            X : Math.round((pos.X + currentPos.X)/ 2),
+            Y : Math.round((pos.Y + currentPos.Y)/ 2),
+            R : Math.round(Math.abs(currentPos.Y - pos.Y) / 2)
         };
         if (pos.filled) {
             bufCtx.fillStyle = pos.color;
