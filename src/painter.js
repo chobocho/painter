@@ -393,7 +393,7 @@ function circleMouseUp(event) {
       bufCtx.fillStyle = pos.color;
       bufCtx.fill();
     } 
-    
+
     bufCtx.closePath();
     bufCtx.stroke();
 
@@ -675,6 +675,11 @@ function clearCanvas() {
   bufCtx.clearRect(0, 0, canvas.width, canvas.height);
   commandHistory = [];
   document.getElementById("history").value = "";
+}
+
+function showHistory() {
+  console.log("showHistory()");  
+  document.getElementById("history").style.display = "block";
 }
 
 function undo() {
