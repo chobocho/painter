@@ -1,36 +1,15 @@
-function drawengine(targetCanvas, tarageCtx,  targetBufCanvas, targeBufctx, cmdList) {
+function drawengine(targetCanvas, tarageCtx,  targetBufCanvas, targetBufctx, cmdList) {
     console.log("drawengine()");
 
     cmdList.forEach(function(e) {
         // console.log(e);
         var cmd = e.split(' ');
         // console.log(cmd);
-        processCmd(cmd, targeBufctx);
+        processCmd(cmd, targetBufctx);
     });
 
-    /*
-
-    targeBufctx.beginPath();
-
-    targeBufctx.strokeStyle = pos.color;
-
-    bufCtx.moveTo(pos.X, pos.Y);
-    bufCtx.lineTo(currentPos.X, currentPos.Y);
-    bufCtx.lineTo(tri.P.X, tri.P.Y);
-    bufCtx.lineTo(pos.X, pos.Y);
-    bufCtx.stroke();
-
-    if (pos.filled) {
-      bufCtx.fillStyle = pos.color;
-      bufCtx.fill();
-    } 
-    targeBufctx.closePath();
-
-
-    */
-
-   tarageCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
-   tarageCtx.drawImage(targetBufCanvas, 0, 0);
+    tarageCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+    tarageCtx.drawImage(targetBufCanvas, 0, 0);
 }
 
 var drawCmdTable = {
@@ -47,16 +26,16 @@ var enginePos = {
     filled: false,
 }
 
-function processColor(cmd, targeBufctx) {
+function processColor(cmd, targetBufctx) {
     console.log("processColor");
     enginePos.color = cmd[1];
 }
 
-function processLine(cmd, targeBufctx) {
+function processLine(cmd, targetBufctx) {
     console.log("processLine");
-    targeBufctx.beginPath();
+    targetBufctx.beginPath();
 
-    targeBufctx.strokeStyle = enginePos.color;
+    targetBufctx.strokeStyle = enginePos.color;
 
     var X1 = {
         X:parseInt(cmd[1]),
@@ -68,23 +47,42 @@ function processLine(cmd, targeBufctx) {
         Y:parseInt(cmd[4])   
     }
 
-    targeBufctx.moveTo(X1.X, X1.Y);
-    targeBufctx.lineTo(X2.X, X2.Y);
-    targeBufctx.stroke();
+    targetBufctx.moveTo(X1.X, X1.Y);
+    targetBufctx.lineTo(X2.X, X2.Y);
+    targetBufctx.stroke();
 
-    targeBufctx.closePath();
+    targetBufctx.closePath();
 }
 
-function processCircle(cmd, targeBufctx) {
+function processCircle(cmd, targetBufctx) {
     console.log("processCircle");
+
+    targetBufctx.beginPath();
+    targetBufctx.strokeStyle = enginePos.color;
+
+    var filled = (cmd[4] == 'F') ? true : false;
+
+    var circle = {
+        X: parseInt(cmd[1]),
+        Y: parseInt(cmd[2]),
+        R: parseInt(cmd[3])
+    };
+
+    targetBufctx.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
+
+    if (filled) {
+        targetBufctx.fillStyle = enginePos.color;
+        targetBufctx.fill();
+    } 
+
+    targetBufctx.closePath();
 }
 
-function processRect(cmd, targeBufctx) {
+function processRect(cmd, targetBufctx) {
     console.log("processRect");
 
-    targeBufctx.beginPath();
-
-    targeBufctx.strokeStyle = enginePos.color;
+    targetBufctx.beginPath();
+    targetBufctx.strokeStyle = enginePos.color;
 
     var X1 = {
         X:parseInt(cmd[1]),
@@ -104,20 +102,20 @@ function processRect(cmd, targeBufctx) {
     };
     
     if (filled) {
-        targeBufctx.fillStyle = enginePos.color;
-        targeBufctx.fillRect(X1.X, X1.Y, box.W, box.H);
+        targetBufctx.fillStyle = enginePos.color;
+        targetBufctx.fillRect(X1.X, X1.Y, box.W, box.H);
     } else {
-        targeBufctx.strokeRect(X1.X, X1.Y, box.W, box.H);
+        targetBufctx.strokeRect(X1.X, X1.Y, box.W, box.H);
     }
 
-    targeBufctx.closePath();
+    targetBufctx.closePath();
 }
 
-function processTri(cmd, targeBufctx) {
+function processTri(cmd, targetBufctx) {
     console.log("processTri");
 }
 
-function processCmd(cmd, targeBufctx) {
+function processCmd(cmd, targetBufctx) {
     console.log("processCmd: " + cmd[0]);
-    drawCmdTable[cmd[0]](cmd, targeBufctx);   
+    drawCmdTable[cmd[0]](cmd, targetBufctx);   
 }
