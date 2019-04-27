@@ -694,6 +694,12 @@ function initPage() {
   console.log("initPage()");
   commandHistory = [];
   document.getElementById("history").value = "";
+
+  var newColor = drwaCommand();
+  newColor.mode = "color";
+  newColor.color = "red";
+  commandHistory.push(newColor.toCommand());
+  addHistory(newColor.toCommand());
 }
 
 function onLoadPage() {

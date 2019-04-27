@@ -62,14 +62,15 @@
       }
 
       function SaveAsJson() {
-        var fileName = document.getElementById("filename").value;
+        console.log("SaveAsJson");
+        var fileName = document.getElementById("title").value;
         if (fileName.length == 0) {
-          fileName = "untitle";
+          fileName = "imsge";
         }
 
         fileName += ".json";
 
-        var preData = {};
+        var preData = {'version':'V0.617a1'};
         textareaList.forEach(function(e) {
           preData[e] = document.getElementById(e).value;
         });
@@ -231,6 +232,7 @@
             <a id="saveImage" download="image.png">
                 <INPUT type="button" value="Save" onClick="saveImage()" />
             </a>
+            <input type="button" value="Save as Json" onClick="SaveAsJson()" />
             <INPUT type="button" value="Clear" onClick="clearCanvas()" />
             <INPUT type="button" value="History" onClick="showHistory()" />
           </div>
