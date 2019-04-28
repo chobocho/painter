@@ -90,10 +90,23 @@
         return true;
       }
 
-      function LoadJson() {
-        var loadFile = document.getElementById("load_filename");
+      function isTextFile(filename) {
+        var ridx = filename.lastIndexOf(".");
+        var extension = filename.substring(ridx + 1);
 
+        console.log(extension);
+
+        if (extension.length != 3 || extension.toLowerCase() != "txt") {
+          return false;
+        }
+        return true;
+      }
+
+
+      function loadFile() {
+        var loadFile = document.getElementById("load_filename");
         var file = loadFile.files[0];
+          
         if (!file) {
           return;
         }
@@ -103,28 +116,57 @@
 
         fileName = fileName.substring(ridx + 1);
 
-        if (!isJsonFile(fileName)) {
-          return;
-        }
+        if (isJsonFile(fileName)) {
+          LoadJson(file, fileName);
+        } else if(isTextFile(fileName)) {
+          LoadText(file, fileName);
+        } 
+      }
 
-        document.getElementById("filename").value = fileName;
+      function LoadJson(file, fileName) {
+        document.getElementById("title").value = fileName;
 
         var reader = new FileReader();
         reader.onload = function(e) {
           var contents = e.target.result;
-          displayLoadData(contents);
+          displayLoadJsonData(contents);
         };
         reader.readAsText(file);
       }
 
-      function displayLoadData(contents) {
+      function displayLoadJsonData(contents) {
         var noteData = JSON.parse(contents);
 
-        dataList = ["title", "reduce", "record", "summary"];
-        dataList.forEach(function(e) {
-          document.getElementById(e).value = noteData[e];
-        });
+        var version = noteData['version'];
+        console.log(version);
+        document.getElementById('history').value = noteData['history'];
+        reDrawCanvas();
       }
+
+      function LoadText(file, fileName) {
+        document.getElementById("title").value = fileName;
+
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var contents = e.target.result;
+          displayLoadTextData(contents);
+        };
+        reader.readAsText(file);
+      }
+
+      function displayLoadTextData(contents) {
+        var noteData = contents.split('\n');
+        var history = "";
+         
+        noteData.forEach(function (e){
+          if (e[0] != 'v') {
+            history += e + "\n";
+          }
+        }); 
+        document.getElementById('history').value = history;
+        reDrawCanvas();
+      }
+
     </script>
   </head>
 
@@ -221,6 +263,7 @@
           </div>
         </span>
         <span class="cell">
+          <INPUT type="file" id="load_filename" value="Load" onChange="loadFile()" />
           <div>Title <input id="title" size="15" /></div>
           <div>
             <a id="saveImage" download="image.png">
