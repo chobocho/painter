@@ -33,21 +33,15 @@
         document.getElementById(idOfTextArea).value = "";
       }
 
-      function SaveAsFile() {
+      function SaveAsTxt() {
         var fileName = document.getElementById("title").value;
         if (fileName.length == 0) {
-          fileName = "untitle";
+          fileName = "image";
         }
-        fileName += ".json";
+        fileName += ".txt";
 
-        var preData = "";
-        textareaList.forEach(function(e) {
-          preData += e + ":\n";
-          preData += document.getElementById(e).value;
-          preData += "\n\n";
-        });
-
-        var postData = preData.replace(/\<br\>/gi, "\n");
+        var preData = 'version: V0.617a1\n';
+        var postData =  preData + document.getElementById("history").value;
 
         var link = document.createElement("a");
         link.setAttribute("download", fileName);
@@ -232,9 +226,12 @@
             <a id="saveImage" download="image.png">
                 <INPUT type="button" value="Save" onClick="saveImage()" />
             </a>
-            <input type="button" value="Save as Json" onClick="SaveAsJson()" />
             <INPUT type="button" value="Clear" onClick="initPage()" />
             <INPUT type="button" value="History" onClick="showHistory()" />
+          </div>
+          <div>
+            <input type="button" value="Save as Json" onClick="SaveAsJson()" />
+            <input type="button" value="Save as Txt" onClick="SaveAsTxt()" />
           </div>
           <div>
             <textarea id="history" cols="40" rows="37" style="display: none;"></textarea>
