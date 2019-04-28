@@ -5,6 +5,7 @@ var bufCanvas;
 var bufCtx;
 
 var commandHistory = [];
+var redoHistory = [];
 
 var paintMode = [
   "point",
@@ -663,6 +664,8 @@ function clearCanvas() {
 
 function initHistory() {
   commandHistory = [];
+  redoHistory = [];
+
   document.getElementById("history").value = "";
 
   var newColor = drwaCommand();
@@ -679,10 +682,38 @@ function showHistory() {
 
 function undo() {
   console.log("undo");
+  
+  if (commandHistory.length <= 1) {
+    return;
+  }
+
+  var lastCommand = commandHistory.pop();
+  redoHistory.push(lastCommand);
+
+  var history = "";
+
+  commandHistory.forEach(function(e){
+    history += e + "\n";
+  });
+
+  document.getElementById("history").value = history;
+  clearCanvas();
+  drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
 }
 
 function redo() {
   console.log("redo");
+
+  if (redoHistory.length == 0) {
+    return;
+  }
+
+  var lastCommand = redoHistory.pop();
+  commandHistory.push(lastCommand);
+  addHistory(lastCommand);
+
+  clearCanvas();
+  drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
 }
 
 function initPage() {
@@ -698,10 +729,10 @@ function reDrawCanvas() {
   clearCanvas();
   commandHistory = [];
 
-  var history =  document.getElementById("history").value.split('\n');
-  console.log(history)
+  commandHistory =  document.getElementById("history").value.split('\n');
+  // console.log(commandHistory)
 
-  drawengine(canvas, cvs, bufCanvas, bufCtx, history);
+  drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
 }
 
 function onLoadPage() {
