@@ -684,7 +684,7 @@ function saveImage() {
 
 function addHistory(cmd) {
   var history = document.getElementById("history").value;
-  history += cmd + "\n";
+  history += cmd.trim() + "\n";
   //console.log(history);
   document.getElementById("history").value = history;
 }
@@ -725,8 +725,12 @@ function undo() {
 
   if (lastCommand.trim() == "pencil_end") {
     console.log("Start remove pencil group");
-    while (commandHistory.length > 0) {
+    while (commandHistory.length > 1) {
        lastCommand = commandHistory.pop();
+       lastCommand = lastCommand.trim();
+       if (lastCommand.length == 0) {
+         continue;
+       }
        redoHistory.push(lastCommand);
        if (lastCommand.trim() == "pencil_begin") {
          break;
@@ -758,13 +762,19 @@ function redo() {
 
   if (lastCommand.trim() == "pencil_begin") {
     console.log("Start add pencil group");
+    var history = "";
     while (redoHistory.length > 0) {
        lastCommand = redoHistory.pop();
+       if (lastCommand.length == 0) {
+          continue;
+       }
+       history += lastCommand.trim() + "\n";
        commandHistory.push(lastCommand);
        if (lastCommand.trim() == "pencil_end") {
          break;
        }
     } 
+    addHistory(history);
   }
 
   clearCanvas();
