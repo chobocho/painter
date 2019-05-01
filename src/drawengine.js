@@ -17,6 +17,8 @@ function drawengine(targetCanvas, tarageCtx,  targetBufCanvas, targetBufctx, cmd
 
 var drawCmdTable = {
     color:processColor,
+    pencil_begin:processPencil,
+    pencil_end:processPencil,
     line:processLine,
     circle:processCircle,
     rect:processRect,
@@ -29,9 +31,18 @@ var enginePos = {
     filled: false,
 }
 
+function processCmd(cmd, targetBufctx) {
+    console.log("processCmd: " + cmd[0]);
+    drawCmdTable[cmd[0]](cmd, targetBufctx);   
+}
+
 function processColor(cmd, targetBufctx) {
     console.log("processColor");
     enginePos.color = cmd[1];
+}
+
+function processPencil(cmd, targetBufctx) {
+    console.log("processPencil");
 }
 
 function processLine(cmd, targetBufctx) {
@@ -149,9 +160,4 @@ function processTri(cmd, targetBufctx) {
       } 
 
     targetBufctx.closePath();
-}
-
-function processCmd(cmd, targetBufctx) {
-    console.log("processCmd: " + cmd[0]);
-    drawCmdTable[cmd[0]](cmd, targetBufctx);   
 }

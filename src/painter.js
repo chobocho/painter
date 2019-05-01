@@ -17,7 +17,9 @@ var paintMode = [
   "rect",
   "filledrect",
   "tri",
-  "filledtri"
+  "filledtri",
+  "pencil_begin",
+  "pencil_end"
 ];
 
 var toolTable = {
@@ -29,9 +31,17 @@ var toolTable = {
   filledsquare: 5,
   rect: 6,
   filledrect: 7,
-  tri:8,
-  filledtri:9
+  tri: 8,
+  filledtri: 9
 };
+
+var pointShape = {
+  mouseDown: pointMouseDown,
+  mouseMove: pointMouseMove,
+  mouseUp: pointMouseUp
+};
+
+var shapeList = [pointShape];
 
 var paintMouseDownAction = {
   point: pointMouseDown,
@@ -69,7 +79,7 @@ var paintMouseMoveAction = {
   rect: rectMouseMove,
   filledrect: rectMouseMove,
   tri: triMouseMove,
-  filledtri : triMouseMove
+  filledtri: triMouseMove
 };
 
 var pos = {
@@ -83,7 +93,7 @@ var pos = {
   mouseMoveAction: paintMouseMoveAction[paintMode[0]],
   x: 0,
   y: 0,
-  update: function(drawMode) {
+  update: function (drawMode) {
     this.drawMode = drawMode;
     this.mouseDownAction = paintMouseDownAction[paintMode[drawMode]];
     this.mouseUpAction = paintMouseUpAction[paintMode[drawMode]];
@@ -108,13 +118,16 @@ function drwaCommand() {
     X3: point(),
     R: 0,
     lines: [],
-    toCommand: function() {
+    toCommand: function () {
       console.log("toCommand");
       var newCommand = this.mode + " ";
       var isFilled = this.filled == true ? 'F' : 'E';
       switch (this.mode) {
         case "color":
           newCommand += this.color;
+          break;
+        case "pencil_begin":
+        case "pencil_end":
           break;
         case "point":
         case "line":
@@ -185,7 +198,9 @@ function getMousePosition(event) {
 function mouseListener(event) {
   switch (event.type) {
     case "mousedown":
-      pos.mouseDownAction(event);
+      if (!pos.isDraw) {
+        pos.mouseDownAction(event);
+      }
       break;
     case "mousemove":
       if (pos.isDraw) {
@@ -194,7 +209,9 @@ function mouseListener(event) {
       break;
     case "mouseup":
     case "mouseout":
-      pos.mouseUpAction(event);
+      if (pos.isDraw) {
+        pos.mouseUpAction(event);
+      }
       break;
   }
 }
@@ -249,6 +266,11 @@ function pointMouseDown(event) {
   cvs.stroke();
   pos.X = startPos.X;
   pos.Y = startPos.Y;
+
+  var newPoint = drwaCommand();
+  newPoint.mode = "pencil_begin";
+  commandHistory.push(newPoint.toCommand());
+  addHistory(newPoint.toCommand());
 }
 
 function pointMouseMove(event) {
@@ -269,8 +291,17 @@ function pointMouseMove(event) {
 }
 
 function pointMouseUp(event) {
+  if (!pos.isDraw) {
+    return;
+  }
+
   pos.isDraw = false;
   cvs.closePath();
+
+  var newPoint = drwaCommand();
+  newPoint.mode = "pencil_end";
+  commandHistory.push(newPoint.toCommand());
+  addHistory(newPoint.toCommand());
 }
 
 function lineMouseDown(event) {
@@ -301,26 +332,27 @@ function lineMouseMove(event) {
 }
 
 function lineMouseUp(event) {
-  if (pos.isDraw) {
-    console.log("lineMouseUp");
-    var currentPos = getMousePosition(event);
-    bufCtx.beginPath();
-    bufCtx.strokeStyle = pos.color;
-    bufCtx.moveTo(pos.X, pos.Y);
-    bufCtx.lineTo(currentPos.X, currentPos.Y);
-    bufCtx.closePath();
-    bufCtx.stroke();
-    cvs.drawImage(bufCanvas, 0, 0);
-
-    var newLine = drwaCommand();
-    newLine.mode = "line";
-    newLine.X1 = { X: pos.X, Y: pos.Y };
-    newLine.X2 = { X: currentPos.X, Y: currentPos.Y };
-    commandHistory.push(newLine.toCommand());
-    addHistory(newLine.toCommand());
-
-    pos.isDraw = false;
+  if (!pos.isDraw) {
+    return;
   }
+  console.log("lineMouseUp");
+  var currentPos = getMousePosition(event);
+  bufCtx.beginPath();
+  bufCtx.strokeStyle = pos.color;
+  bufCtx.moveTo(pos.X, pos.Y);
+  bufCtx.lineTo(currentPos.X, currentPos.Y);
+  bufCtx.closePath();
+  bufCtx.stroke();
+  cvs.drawImage(bufCanvas, 0, 0);
+
+  var newLine = drwaCommand();
+  newLine.mode = "line";
+  newLine.X1 = { X: pos.X, Y: pos.Y };
+  newLine.X2 = { X: currentPos.X, Y: currentPos.Y };
+  commandHistory.push(newLine.toCommand());
+  addHistory(newLine.toCommand());
+
+  pos.isDraw = false;
 }
 
 function circleMouseDown(event) {
@@ -355,7 +387,7 @@ function circleMouseMove(event) {
   if (pos.filled) {
     cvs.fillStyle = pos.color;
     cvs.fill();
-  } 
+  }
 
   cvs.closePath();
   cvs.stroke();
@@ -379,7 +411,7 @@ function circleMouseUp(event) {
     if (pos.filled) {
       bufCtx.fillStyle = pos.color;
       bufCtx.fill();
-    } 
+    }
 
     bufCtx.closePath();
     bufCtx.stroke();
@@ -428,7 +460,7 @@ function squareMouseMove(event) {
   if (pos.filled) {
     cvs.fillStyle = pos.color;
     cvs.fillRect(pos.X, pos.Y, box.W, box.H);
-  } 
+  }
 
   cvs.strokeRect(pos.X, pos.Y, box.W, box.H);
   cvs.closePath();
@@ -486,7 +518,7 @@ function rectMouseMove(event) {
   console.log("rectMouseMove");
   var currentPos = getMousePosition(event);
   cvs.beginPath();
-  
+
   cvs.clearRect(0, 0, canvas.width, canvas.height);
   cvs.drawImage(bufCanvas, 0, 0);
 
@@ -501,7 +533,7 @@ function rectMouseMove(event) {
   if (pos.filled) {
     cvs.fillStyle = pos.color;
     cvs.fillRect(pos.X, pos.Y, box.W, box.H);
-  } 
+  }
 
   cvs.stroke();
   cvs.closePath();
@@ -582,14 +614,16 @@ function triMouseMove(event) {
   if (pos.filled) {
     cvs.fillStyle = pos.color;
     cvs.fill();
-  } 
+  }
 
   cvs.closePath();
   cvs.strokeStyle = pos.color;
 }
 
 function triMouseUp(event) {
-  if (pos.isDraw) {
+  if (!pos.isDraw) {
+      return;
+  }
     console.log("triMouseUp");
     var currentPos = getMousePosition(event);
 
@@ -614,7 +648,7 @@ function triMouseUp(event) {
     if (pos.filled) {
       bufCtx.fillStyle = pos.color;
       bufCtx.fill();
-    } 
+    }
 
     cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
@@ -629,7 +663,6 @@ function triMouseUp(event) {
     addHistory(newTriangle.toCommand());
 
     pos.isDraw = false;
-  }
 }
 
 function saveImage() {
@@ -676,13 +709,13 @@ function initHistory() {
 }
 
 function showHistory() {
-  console.log("showHistory()");  
+  console.log("showHistory()");
   document.getElementById("history").style.display = "block";
 }
 
 function undo() {
   console.log("undo");
-  
+
   if (commandHistory.length <= 1) {
     return;
   }
@@ -690,9 +723,20 @@ function undo() {
   var lastCommand = commandHistory.pop();
   redoHistory.push(lastCommand);
 
+  if (lastCommand.trim() == "pencil_end") {
+    console.log("Start remove pencil group");
+    while (commandHistory.length > 0) {
+       lastCommand = commandHistory.pop();
+       redoHistory.push(lastCommand);
+       if (lastCommand.trim() == "pencil_begin") {
+         break;
+       }
+    } 
+  }
+
   var history = "";
 
-  commandHistory.forEach(function(e){
+  commandHistory.forEach(function (e) {
     history += e + "\n";
   });
 
@@ -712,6 +756,17 @@ function redo() {
   commandHistory.push(lastCommand);
   addHistory(lastCommand);
 
+  if (lastCommand.trim() == "pencil_begin") {
+    console.log("Start add pencil group");
+    while (redoHistory.length > 0) {
+       lastCommand = redoHistory.pop();
+       commandHistory.push(lastCommand);
+       if (lastCommand.trim() == "pencil_end") {
+         break;
+       }
+    } 
+  }
+
   clearCanvas();
   drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
 }
@@ -729,7 +784,7 @@ function reDrawCanvas() {
   clearCanvas();
   commandHistory = [];
 
-  commandHistory =  document.getElementById("history").value.split('\n');
+  commandHistory = document.getElementById("history").value.split('\n');
   // console.log(commandHistory)
 
   drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
