@@ -17,3 +17,6 @@ http://www.chobocho.com/javascript/painter.html
 [008](https://github.com/chobocho/painter/blob/master/doc/tutorial/008/008.md)  
 [009](https://github.com/chobocho/painter/blob/master/doc/tutorial/009/009.md)  
 [010](https://github.com/chobocho/painter/blob/master/doc/tutorial/010/010.md)  
+
+# License
+MIT License
