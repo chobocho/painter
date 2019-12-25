@@ -52,88 +52,102 @@ Shape.prototype.setDrawMode = function (state) {
     return this.state = state;
 }
 
-function lineMouseUp(event) {
-  if (!painter.isDraw()) {
-    return;
-  }
-  console.log("lineMouseUp");
-  var currentPos = getMousePosition(event);
-  bufCtx.beginPath();
-  bufCtx.strokeStyle = painter.getColor();
-  bufCtx.moveTo(painter.shape.point.x, painter.shape.point.y);
-  bufCtx.lineTo(currentPos.X, currentPos.Y);
-  bufCtx.closePath();
-  bufCtx.stroke();
-  cvs.drawImage(bufCanvas, 0, 0);
-
-  painter.setDrawMode(false);
+Shape.prototype.preprocessMouseDown = function() {
+    bufCtx.drawImage(canvas, 0, 0);
+    bufCtx.strokeStyle = painter.getColor();
+    var startPos = getMousePosition(event);
+    this.point.x = startPos.X;
+    this.point.y = startPos.Y;
+    this.setDrawMode(true);
 }
 
-function lineMouseDown(event) {
-  console.log("lineMouseDown");
-  if (painter.isDraw()) {
-    return;
-  }
-  bufCtx.drawImage(canvas, 0, 0);
-  bufCtx.strokeStyle = painter.getColor();
-  var startPos = getMousePosition(event);
-  painter.shape.point.x = startPos.X;
-  painter.shape.point.y = startPos.Y;
-  painter.setDrawMode(true);
-}
-
-function lineMouseMove(event) {
-  if (!painter.isDraw()) {
-    return;
-  }
-  // console.log("lineMouseMove");
-  
-  var currentPos = getMousePosition(event);
+Shape.prototype.preprocessMouseMove = function() {
   cvs.beginPath();
   // Need a delay
   cvs.clearRect(0, 0, canvas.width, canvas.height);
   cvs.drawImage(bufCanvas, 0, 0);
 
   cvs.strokeStyle = painter.getColor();
-  cvs.moveTo(painter.shape.point.x, painter.shape.point.y);
-  cvs.lineTo(currentPos.X, currentPos.Y);
+}
+
+Shape.prototype.postprocessMouseMove = function() {
   cvs.closePath();
   cvs.stroke();
 }
 
-function circleMouseDown(event) {
-  console.log("circleMouseDown");
-  if (painter.isDraw()) {
+Shape.prototype.preprocessMouseUp = function() {
+  bufCtx.beginPath();
+  bufCtx.strokeStyle = painter.getColor();
+}
+
+Shape.prototype.postprocessMouseUp = function() {
+  bufCtx.closePath();
+  bufCtx.stroke();
+
+  cvs.clearRect(0, 0, canvas.width, canvas.height);
+  cvs.drawImage(bufCanvas, 0, 0);
+
+  this.setDrawMode(false);
+}
+
+
+function lineMouseDown(event) {
+    console.log("lineMouseDown");
+    if (painter.isDraw()) {
+      return;
+    }
+    painter.preprocessMouseDown();
+}
+
+function lineMouseMove(event) {
+    if (!painter.isDraw()) {
+      return;
+    }
+    painter.preprocessMouseMove();
+
+    var currentPos = getMousePosition(event);
+    cvs.moveTo(painter.shape.point.x, painter.shape.point.y);
+    cvs.lineTo(currentPos.X, currentPos.Y);
+    painter.postprocessMouseMove();
+}
+
+
+function lineMouseUp(event) {
+  if (!painter.isDraw()) {
     return;
   }
-  bufCtx.drawImage(canvas, 0, 0);
-  var startPos = getMousePosition(event);
-  painter.shape.point.x = startPos.X;
-  painter.shape.point.y = startPos.Y;
-  painter.setDrawMode(true);
+  console.log("lineMouseUp");
 
+  painter.preprocessMouseUp();
+
+  var currentPos = getMousePosition(event);
+  bufCtx.moveTo(painter.shape.point.x, painter.shape.point.y);
+  bufCtx.lineTo(currentPos.X, currentPos.Y);
+
+  painter.postprocessMouseUp();
+}
+
+function circleMouseDown(event) {
+    console.log("circleMouseDown");    
+    if (painter.isDraw()) {
+        return;
+    }
+    painter.preprocessMouseDown();
 }
 
 function circleMouseMove(event) {
   if (!painter.isDraw()) {
     return;
   }
+  painter.preprocessMouseMove();
   var currentPos = getMousePosition(event);
-  cvs.beginPath();
-  // Need a delay
-  cvs.clearRect(0, 0, canvas.width, canvas.height);
-  cvs.drawImage(bufCanvas, 0, 0);
-
-  cvs.strokeStyle = painter.getColor();
-
   var circle = {
     X: Math.round((painter.shape.point.x + currentPos.X) / 2),
     Y: Math.round((painter.shape.point.y + currentPos.Y) / 2),
     R: Math.round(Math.abs(currentPos.Y - painter.shape.point.y) / 2)
   };
   cvs.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
-  cvs.closePath();
-  cvs.stroke();
+  painter.postprocessMouseMove();
 }
 
 function circleMouseUp(event) {
@@ -141,25 +155,18 @@ function circleMouseUp(event) {
     return;
   }
 
-  var currentPos = getMousePosition(event);
-  bufCtx.beginPath();
-  bufCtx.strokeStyle = painter.getColor();
+  painter.preprocessMouseUp();
 
+  var currentPos = getMousePosition(event);
   var circle = {
     X: Math.round((painter.shape.point.x + currentPos.X) / 2),
     Y: Math.round((painter.shape.point.y + currentPos.Y) / 2),
     R: Math.round(Math.abs(currentPos.Y - painter.shape.point.y) / 2)
   };
   bufCtx.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
-  bufCtx.closePath();
-  bufCtx.stroke();
 
-  cvs.clearRect(0, 0, canvas.width, canvas.height);
-  cvs.drawImage(bufCanvas, 0, 0);
-
-  painter.setDrawMode(false);
+  painter.postprocessMouseUp();
 }
-
 
 function Painter() {
     this.tools = {}
@@ -204,6 +211,26 @@ Painter.prototype.getColor = function () {
 
 Painter.prototype.setColor = function(choosedColor) {
   this.color = choosedColor;
+}
+
+Painter.prototype.preprocessMouseDown = function() {
+  this.shape.preprocessMouseDown();
+}
+
+Painter.prototype.preprocessMouseMove = function() {
+  this.shape.preprocessMouseMove();
+}
+
+Painter.prototype.postprocessMouseMove = function() {
+  this.shape.postprocessMouseMove();
+}
+
+Painter.prototype.preprocessMouseUp = function() {
+  this.shape.preprocessMouseUp();
+}
+
+Painter.prototype.postprocessMouseUp = function() {
+  this.shape.postprocessMouseUp();
 }
 
 function mouseListener(event) {
