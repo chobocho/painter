@@ -18,6 +18,8 @@ var paintMode = [
   "filledrect",
   "tri",
   "filledtri",
+  "ellipse",
+  "filledellipse",
   "pencil_begin",
   "pencil_end"
 ];
@@ -32,7 +34,9 @@ var toolTable = {
   rect: 6,
   filledrect: 7,
   tri: 8,
-  filledtri: 9
+  filledtri: 9,
+  ellipse: 10,
+  filledellipse: 11
 };
 
 var pointShape = {
@@ -54,6 +58,8 @@ var paintMouseDownAction = {
   filledrect: rectMouseDown,
   tri: triMouseDown,
   filledtri: triMouseDown,
+  ellipse: ellipseMouseDown,
+  filledellipse: ellipseMouseDown
 };
 
 var paintMouseUpAction = {
@@ -66,7 +72,9 @@ var paintMouseUpAction = {
   rect: rectMouseUp,
   filledrect: rectMouseUp,
   tri: triMouseUp,
-  filledtri: triMouseUp
+  filledtri: triMouseUp,
+  ellipse: ellipseMouseUp,
+  filledellipse: ellipseMouseUp
 };
 
 var paintMouseMoveAction = {
@@ -79,7 +87,9 @@ var paintMouseMoveAction = {
   rect: rectMouseMove,
   filledrect: rectMouseMove,
   tri: triMouseMove,
-  filledtri: triMouseMove
+  filledtri: triMouseMove,
+  ellipse: ellipseMouseMove,
+  filledellipse: ellipseMouseMove
 };
 
 var pos = {
@@ -117,6 +127,8 @@ function drwaCommand() {
     X2: point(),
     X3: point(),
     R: 0,
+    A: 0,
+    B: 0,
     lines: [],
     toCommand: function () {
       console.log("toCommand");
@@ -147,6 +159,18 @@ function drwaCommand() {
             this.X1.Y +
             " " +
             this.R +
+            " " +
+            isFilled;
+          break;
+        case "ellipse":
+          newCommand +=
+            this.X1.X +
+            " " +
+            this.X1.Y +
+            " " +
+            this.A +
+            " " +
+            this.B +
             " " +
             isFilled;
           break;
@@ -663,6 +687,85 @@ function triMouseUp(event) {
     addHistory(newTriangle.toCommand());
 
     pos.isDraw = false;
+}
+
+function ellipseMouseDown(event) {
+  console.log("ellipseMouseDown");
+  if (pos.isDraw) {
+    return;
+  }
+  bufCtx.drawImage(canvas, 0, 0);
+  pos.isDraw = true;
+  var startPos = getMousePosition(event);
+  pos.X = startPos.X;
+  pos.Y = startPos.Y;
+}
+
+function ellipseMouseMove(event) {
+  console.log("ellipseMouseMove");
+  var currentPos = getMousePosition(event);
+  cvs.beginPath();
+
+  cvs.clearRect(0, 0, canvas.width, canvas.height);
+  cvs.drawImage(bufCanvas, 0, 0);
+  cvs.strokeStyle = "black";
+
+  var ellipse = {
+    X: Math.round((pos.X + currentPos.X) / 2),
+    Y: Math.round((pos.Y + currentPos.Y) / 2),
+    A: Math.round(Math.abs(currentPos.X - pos.X) / 2),
+    B: Math.round(Math.abs(currentPos.Y - pos.Y) / 2)
+  };
+
+  cvs.ellipse(ellipse.X, ellipse.Y, ellipse.A, ellipse.B, 0, 0, 2 * Math.PI);
+
+  if (pos.filled) {
+    cvs.fillStyle = pos.color;
+    cvs.fill();
+  }
+
+  cvs.closePath();
+  cvs.stroke();
+  cvs.strokeStyle = pos.color;
+}
+
+function ellipseMouseUp(event) {
+  if (pos.isDraw) {
+    console.log("ellipseMouseUp");
+    var currentPos = getMousePosition(event);
+    bufCtx.beginPath();
+    bufCtx.strokeStyle = pos.color;
+  var ellipse = {
+    X: Math.round((pos.X + currentPos.X) / 2),
+    Y: Math.round((pos.Y + currentPos.Y) / 2),
+    A: Math.round(Math.abs(currentPos.X - pos.X) / 2),
+    B: Math.round(Math.abs(currentPos.Y - pos.Y) / 2)
+  };
+
+    bufCtx.ellipse(ellipse.X, ellipse.Y, ellipse.A, ellipse.B, 0, 0, 2 * Math.PI);
+
+    if (pos.filled) {
+      bufCtx.fillStyle = pos.color;
+      bufCtx.fill();
+    }
+
+    bufCtx.closePath();
+    bufCtx.stroke();
+
+    cvs.clearRect(0, 0, canvas.width, canvas.height);
+    cvs.drawImage(bufCanvas, 0, 0);
+
+    var newEllipse = drwaCommand();
+    newEllipse.mode = "ellipse";
+    newEllipse.filled = pos.filled;
+    newEllipse.X1 = { X: ellipse.X, Y: ellipse.Y };
+    newEllipse.A = ellipse.A;
+    newEllipse.B = ellipse.B;
+    commandHistory.push(newEllipse.toCommand());
+    addHistory(newEllipse.toCommand());
+
+    pos.isDraw = false;
+  }
 }
 
 function saveImage() {

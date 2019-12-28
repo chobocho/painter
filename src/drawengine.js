@@ -23,7 +23,8 @@ var drawCmdTable = {
     circle:processCircle,
     rect:processRect,
     square:processRect,
-    tri:processTri
+    tri:processTri,
+    ellipse:processEllipse
 }
 
 var enginePos = {
@@ -82,6 +83,32 @@ function processCircle(cmd, targetBufctx) {
     };
 
     targetBufctx.arc(circle.X, circle.Y, circle.R, 0, Math.PI * 2);
+
+    if (filled) {
+        targetBufctx.fillStyle = enginePos.color;
+        targetBufctx.fill();
+    } 
+
+    targetBufctx.closePath();
+    targetBufctx.stroke();
+}
+
+function processEllipse(cmd, targetBufctx) {
+    console.log("processEllipse");
+
+    targetBufctx.beginPath();
+    targetBufctx.strokeStyle = enginePos.color;
+
+    var filled = (cmd[5] == 'F') ? true : false;
+
+    var ellipse = {
+        X: parseInt(cmd[1]),
+        Y: parseInt(cmd[2]),
+        A: parseInt(cmd[3]),
+        B: parseInt(cmd[4])
+    };
+
+    targetBufctx.ellipse(ellipse.X, ellipse.Y, ellipse.A, ellipse.B, 0, 0, 2 * Math.PI);
 
     if (filled) {
         targetBufctx.fillStyle = enginePos.color;
