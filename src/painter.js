@@ -776,13 +776,13 @@ function saveImage() {
     imageName = "image";
   }
   imageName += ".png";
-  var saveedImage = document.getElementById("saveImage");
+  var savedImage = document.getElementById("saveImage");
   var image = document
     .getElementById("canvas")
     .toDataURL("image/png")
     .replace("image/png", "image/octet-stream");
-  saveedImage.setAttribute("download", imageName);
-  saveedImage.setAttribute("href", image);
+  savedImage.setAttribute("download", imageName);
+  savedImage.setAttribute("href", image);
 }
 
 function addHistory(cmd) {
