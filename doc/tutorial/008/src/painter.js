@@ -264,6 +264,23 @@ function selectShape(choosedShape) {
   painter.setShape(choosedShape);
 }
 
+function saveImage() {
+  console.log("saveImage()");
+  var imageName = document.getElementById("title").value;
+  console.log(imageName.lenght);
+  if (imageName.length == 0) {
+    imageName = "image";
+  }
+  imageName += ".png";
+  var savedImage = document.getElementById("saveImage");
+  var image = document
+    .getElementById("canvas")
+    .toDataURL("image/png")
+    .replace("image/png", "image/octet-stream");
+  savedImage.setAttribute("download", imageName);
+  savedImage.setAttribute("href", image);
+}
+
 function onLoadPage() {
   canvas = document.getElementById("canvas");
   cvs = canvas.getContext("2d");
