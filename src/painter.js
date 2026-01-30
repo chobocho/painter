@@ -1,13 +1,14 @@
-var cvs;
-var canvas;
+// Updated: 2026.01.30 - Modernized to ES6+
+let cvs;
+let canvas;
 
-var bufCanvas;
-var bufCtx;
+let bufCanvas;
+let bufCtx;
 
-var commandHistory = [];
-var redoHistory = [];
+let commandHistory = [];
+let redoHistory = [];
 
-var paintMode = [
+const paintMode = [
   "point",
   "line",
   "circle",
@@ -24,7 +25,7 @@ var paintMode = [
   "pencil_end"
 ];
 
-var toolTable = {
+const toolTable = {
   pencil: 0,
   line: 1,
   circle: 2,
@@ -39,15 +40,15 @@ var toolTable = {
   filledellipse: 11
 };
 
-var pointShape = {
+const pointShape = {
   mouseDown: pointMouseDown,
   mouseMove: pointMouseMove,
   mouseUp: pointMouseUp
 };
 
-var shapeList = [pointShape];
+const shapeList = [pointShape];
 
-var paintMouseDownAction = {
+const paintMouseDownAction = {
   point: pointMouseDown,
   line: lineMouseDown,
   circle: circleMouseDown,
@@ -62,7 +63,7 @@ var paintMouseDownAction = {
   filledellipse: ellipseMouseDown
 };
 
-var paintMouseUpAction = {
+const paintMouseUpAction = {
   point: pointMouseUp,
   line: lineMouseUp,
   circle: circleMouseUp,
@@ -77,7 +78,7 @@ var paintMouseUpAction = {
   filledellipse: ellipseMouseUp
 };
 
-var paintMouseMoveAction = {
+const paintMouseMoveAction = {
   point: pointMouseMove,
   line: lineMouseMove,
   circle: circleMouseMove,
@@ -92,7 +93,7 @@ var paintMouseMoveAction = {
   filledellipse: ellipseMouseMove
 };
 
-var pos = {
+const pos = {
   isDraw: false,
   color: "red",
   colorIdx: 0,
@@ -103,7 +104,7 @@ var pos = {
   mouseMoveAction: paintMouseMoveAction[paintMode[0]],
   x: 0,
   y: 0,
-  update: function (drawMode) {
+  update(drawMode) {
     this.drawMode = drawMode;
     this.mouseDownAction = paintMouseDownAction[paintMode[drawMode]];
     this.mouseUpAction = paintMouseUpAction[paintMode[drawMode]];
@@ -111,116 +112,78 @@ var pos = {
   }
 };
 
-function point() {
-  return {
-    X: 0,
-    Y: 0
-  };
-}
+const point = () => ({
+  X: 0,
+  Y: 0
+});
 
-function drwaCommand() {
-  return {
-    mode: paintMode[0],
-    color: "white",
-    filled: false,
-    X1: point(),
-    X2: point(),
-    X3: point(),
-    R: 0,
-    A: 0,
-    B: 0,
-    lines: [],
-    toCommand: function () {
-      console.log("toCommand");
-      var newCommand = this.mode + " ";
-      var isFilled = this.filled == true ? 'F' : 'E';
-      switch (this.mode) {
-        case "color":
-          newCommand += this.color;
-          break;
-        case "pencil_begin":
-        case "pencil_end":
-          break;
-        case "point":
-        case "line":
-          newCommand +=
-            this.X1.X +
-            " " +
-            this.X1.Y +
-            " " +
-            this.X2.X +
-            " " +
-            this.X2.Y;
-          break;
-        case "circle":
-          newCommand +=
-            this.X1.X +
-            " " +
-            this.X1.Y +
-            " " +
-            this.R +
-            " " +
-            isFilled;
-          break;
-        case "ellipse":
-          newCommand +=
-            this.X1.X +
-            " " +
-            this.X1.Y +
-            " " +
-            this.A +
-            " " +
-            this.B +
-            " " +
-            isFilled;
-          break;
-        case "square":
-        case "rect":
-          newCommand +=
-            this.X1.X +
-            " " +
-            this.X1.Y +
-            " " +
-            this.X2.X +
-            " " +
-            this.X2.Y +
-            " " +
-            isFilled;
-          break;
-        case "tri":
-          newCommand +=
-            this.X1.X +
-            " " +
-            this.X1.Y +
-            " " +
-            this.X2.X +
-            " " +
-            this.X2.Y +
-            " " +
-            this.X3.X +
-            " " +
-            this.X3.Y +
-            " " +
-            isFilled;
-          break;
-        default:
-          break;
-      }
-
-      console.log("toCommand: " + newCommand);
-      return newCommand;
+const drawCommand = () => ({
+  mode: paintMode[0],
+  color: "white",
+  filled: false,
+  X1: point(),
+  X2: point(),
+  X3: point(),
+  R: 0,
+  A: 0,
+  B: 0,
+  lines: [],
+  toCommand() {
+    console.log("toCommand");
+    let newCommand = `${this.mode} `;
+    const isFilled = this.filled ? 'F' : 'E';
+    switch (this.mode) {
+      case "color":
+        newCommand += this.color;
+        break;
+      case "pencil_begin":
+      case "pencil_end":
+        break;
+      case "point":
+      case "line":
+        newCommand += `${this.X1.X} ${this.X1.Y} ${this.X2.X} ${this.X2.Y}`;
+        break;
+      case "circle":
+        newCommand += `${this.X1.X} ${this.X1.Y} ${this.R} ${isFilled}`;
+        break;
+      case "ellipse":
+        newCommand += `${this.X1.X} ${this.X1.Y} ${this.A} ${this.B} ${isFilled}`;
+        break;
+      case "square":
+      case "rect":
+        newCommand += `${this.X1.X} ${this.X1.Y} ${this.X2.X} ${this.X2.Y} ${isFilled}`;
+        break;
+      case "tri":
+        newCommand += `${this.X1.X} ${this.X1.Y} ${this.X2.X} ${this.X2.Y} ${this.X3.X} ${this.X3.Y} ${isFilled}`;
+        break;
+      default:
+        break;
     }
-  };
-}
+
+    console.log("toCommand: " + newCommand);
+    return newCommand;
+  }
+});
 
 function getMousePosition(event) {
-  var x = event.pageX - canvas.offsetLeft;
-  var y = event.pageY - canvas.offsetTop;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  const clientX = event.clientX || (event.touches && event.touches[0]?.clientX) || 0;
+  const clientY = event.clientY || (event.touches && event.touches[0]?.clientY) || 0;
+
+  const x = (clientX - rect.left) * scaleX;
+  const y = (clientY - rect.top) * scaleY;
+
   return { X: x, Y: y };
 }
 
 function mouseListener(event) {
-  switch (event.type) {
+  event.preventDefault();
+  const eventType = event.type.replace('touch', 'mouse').replace('start', 'down').replace('end', 'up').replace('cancel', 'out');
+
+  switch (eventType) {
     case "mousedown":
       if (!pos.isDraw) {
         pos.mouseDownAction(event);
@@ -241,8 +204,8 @@ function mouseListener(event) {
 }
 
 function selectColor(choosedColor) {
-  console.log("selectColor:" + choosedColor);
-  var colorTableIdx = {
+  console.log(`selectColor: ${choosedColor}`);
+  const colorTableIdx = {
     red: 0,
     orange: 1,
     yellow: 2,
@@ -261,7 +224,7 @@ function selectColor(choosedColor) {
   pos.color = choosedColor;
   pos.colorIdx = colorTableIdx[choosedColor];
 
-  var newColor = drwaCommand();
+  const newColor = drawCommand();
   newColor.mode = "color";
   newColor.color = choosedColor;
   commandHistory.push(newColor.toCommand());
@@ -270,11 +233,7 @@ function selectColor(choosedColor) {
 
 function selectTool(choosedTool) {
   console.log(choosedTool);
-  if (choosedTool.indexOf("filled") != -1) {
-    pos.filled = true;
-  } else {
-    pos.filled = false;
-  }
+  pos.filled = choosedTool.includes("filled");
   pos.update(toolTable[choosedTool]);
 }
 
@@ -291,7 +250,7 @@ function pointMouseDown(event) {
   pos.X = startPos.X;
   pos.Y = startPos.Y;
 
-  var newPoint = drwaCommand();
+  const newPoint = drawCommand();
   newPoint.mode = "pencil_begin";
   commandHistory.push(newPoint.toCommand());
   addHistory(newPoint.toCommand());
@@ -303,7 +262,7 @@ function pointMouseMove(event) {
   cvs.lineTo(currentPos.X, currentPos.Y);
   cvs.stroke();
 
-  var newPoint = drwaCommand();
+  const newPoint = drawCommand();
   newPoint.mode = "line";
   newPoint.X1 = { X: pos.X, Y: pos.Y };
   newPoint.X2 = { X: currentPos.X, Y: currentPos.Y };
@@ -322,7 +281,7 @@ function pointMouseUp(event) {
   pos.isDraw = false;
   cvs.closePath();
 
-  var newPoint = drwaCommand();
+  const newPoint = drawCommand();
   newPoint.mode = "pencil_end";
   commandHistory.push(newPoint.toCommand());
   addHistory(newPoint.toCommand());
@@ -369,7 +328,7 @@ function lineMouseUp(event) {
   bufCtx.stroke();
   cvs.drawImage(bufCanvas, 0, 0);
 
-  var newLine = drwaCommand();
+  const newLine = drawCommand();
   newLine.mode = "line";
   newLine.X1 = { X: pos.X, Y: pos.Y };
   newLine.X2 = { X: currentPos.X, Y: currentPos.Y };
@@ -443,7 +402,7 @@ function circleMouseUp(event) {
     cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
-    var newCircle = drwaCommand();
+    const newCircle = drawCommand();
     newCircle.mode = "circle";
     newCircle.filled = pos.filled;
     newCircle.X1 = { X: circle.X, Y: circle.Y };
@@ -514,7 +473,7 @@ function squareMouseUp(event) {
     cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
-    var newSqure = drwaCommand();
+    const newSquare = drawCommand();
     newSqure.mode = "square";
     newSqure.filled = pos.filled;
     newSqure.X1 = { X: pos.X, Y: pos.Y };
@@ -586,7 +545,7 @@ function rectMouseUp(event) {
     cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
-    var newRect = drwaCommand();
+    const newRect = drawCommand();
     newRect.mode = "rect";
     newRect.filled = pos.filled;
     newRect.X1 = { X: pos.X, Y: pos.Y };
@@ -677,7 +636,7 @@ function triMouseUp(event) {
     cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
-    var newTriangle = drwaCommand();
+    const newTriangle = drawCommand();
     newTriangle.mode = "tri";
     newTriangle.filled = pos.filled;
     newTriangle.X1 = { X: pos.X, Y: pos.Y };
@@ -755,7 +714,7 @@ function ellipseMouseUp(event) {
     cvs.clearRect(0, 0, canvas.width, canvas.height);
     cvs.drawImage(bufCanvas, 0, 0);
 
-    var newEllipse = drwaCommand();
+    const newEllipse = drawCommand();
     newEllipse.mode = "ellipse";
     newEllipse.filled = pos.filled;
     newEllipse.X1 = { X: ellipse.X, Y: ellipse.Y };
@@ -770,25 +729,27 @@ function ellipseMouseUp(event) {
 
 function saveImage() {
   console.log("saveImage()");
-  var imageName = document.getElementById("title").value;
-  console.log(imageName.lenght);
-  if (imageName.length == 0) {
+  let imageName = document.getElementById("title").value.trim();
+  console.log(imageName.length);
+  if (imageName.length === 0) {
     imageName = "image";
   }
   imageName += ".png";
-  var savedImage = document.getElementById("saveImage");
-  var image = document
+
+  const image = document
     .getElementById("canvas")
     .toDataURL("image/png")
     .replace("image/png", "image/octet-stream");
-  savedImage.setAttribute("download", imageName);
-  savedImage.setAttribute("href", image);
+
+  const link = document.createElement("a");
+  link.setAttribute("download", imageName);
+  link.setAttribute("href", image);
+  link.click();
 }
 
 function addHistory(cmd) {
-  var history = document.getElementById("history").value;
+  let history = document.getElementById("history").value;
   history += cmd.trim() + "\n";
-  //console.log(history);
   document.getElementById("history").value = history;
 }
 
@@ -804,7 +765,7 @@ function initHistory() {
 
   document.getElementById("history").value = "";
 
-  var newColor = drwaCommand();
+  const newColor = drawCommand();
   newColor.mode = "color";
   newColor.color = "red";
   commandHistory.push(newColor.toCommand());
@@ -813,7 +774,8 @@ function initHistory() {
 
 function showHistory() {
   console.log("showHistory()");
-  document.getElementById("history").style.display = "block";
+  const historyEl = document.getElementById("history");
+  historyEl.style.display = historyEl.style.display === "none" ? "block" : "none";
 }
 
 function undo() {
@@ -823,27 +785,27 @@ function undo() {
     return;
   }
 
-  var lastCommand = commandHistory.pop();
+  let lastCommand = commandHistory.pop();
   redoHistory.push(lastCommand);
 
-  if (lastCommand.trim() == "pencil_end") {
+  if (lastCommand.trim() === "pencil_end") {
     console.log("Start remove pencil group");
     while (commandHistory.length > 1) {
        lastCommand = commandHistory.pop();
        lastCommand = lastCommand.trim();
-       if (lastCommand.length == 0) {
+       if (lastCommand.length === 0) {
          continue;
        }
        redoHistory.push(lastCommand);
-       if (lastCommand.trim() == "pencil_begin") {
+       if (lastCommand.trim() === "pencil_begin") {
          break;
        }
-    } 
+    }
   }
 
-  var history = "";
+  let history = "";
 
-  commandHistory.forEach(function (e) {
+  commandHistory.forEach(e => {
     history += e + "\n";
   });
 
@@ -855,28 +817,28 @@ function undo() {
 function redo() {
   console.log("redo");
 
-  if (redoHistory.length == 0) {
+  if (redoHistory.length === 0) {
     return;
   }
 
-  var lastCommand = redoHistory.pop();
+  let lastCommand = redoHistory.pop();
   commandHistory.push(lastCommand);
   addHistory(lastCommand);
 
-  if (lastCommand.trim() == "pencil_begin") {
+  if (lastCommand.trim() === "pencil_begin") {
     console.log("Start add pencil group");
-    var history = "";
+    let history = "";
     while (redoHistory.length > 0) {
        lastCommand = redoHistory.pop();
-       if (lastCommand.length == 0) {
+       if (lastCommand.length === 0) {
           continue;
        }
        history += lastCommand.trim() + "\n";
        commandHistory.push(lastCommand);
-       if (lastCommand.trim() == "pencil_end") {
+       if (lastCommand.trim() === "pencil_end") {
          break;
        }
-    } 
+    }
     addHistory(history);
   }
 
@@ -891,16 +853,56 @@ function initPage() {
   initHistory();
 }
 
-
 function reDrawCanvas() {
   console.log("reDrawCanvas");
   clearCanvas();
   commandHistory = [];
 
   commandHistory = document.getElementById("history").value.split('\n');
-  // console.log(commandHistory)
 
   drawengine(canvas, cvs, bufCanvas, bufCtx, commandHistory);
+}
+
+function setupEventListeners() {
+  // Mouse events
+  canvas.addEventListener("mousedown", mouseListener);
+  canvas.addEventListener("mousemove", mouseListener);
+  canvas.addEventListener("mouseout", mouseListener);
+  canvas.addEventListener("mouseup", mouseListener);
+
+  // Touch events for mobile
+  canvas.addEventListener("touchstart", mouseListener, { passive: false });
+  canvas.addEventListener("touchmove", mouseListener, { passive: false });
+  canvas.addEventListener("touchend", mouseListener, { passive: false });
+  canvas.addEventListener("touchcancel", mouseListener, { passive: false });
+
+  // Toolbar event delegation
+  document.querySelector('.toolbar').addEventListener('click', (e) => {
+    const img = e.target.closest('img');
+    if (!img) return;
+
+    const action = img.dataset.action;
+    const value = img.dataset.value;
+
+    if (action === 'color') {
+      selectColor(value);
+    } else if (action === 'tool') {
+      selectTool(value);
+    } else if (action === 'undo') {
+      undo();
+    } else if (action === 'redo') {
+      redo();
+    }
+  });
+
+  // Button events
+  document.getElementById('load_filename').addEventListener('change', loadFile);
+  document.getElementById('saveImageBtn').addEventListener('click', saveImage);
+  document.getElementById('clearBtn').addEventListener('click', initPage);
+  document.getElementById('historyBtn').addEventListener('click', showHistory);
+  document.getElementById('saveJsonBtn').addEventListener('click', SaveAsJson);
+  document.getElementById('saveTxtBtn').addEventListener('click', SaveAsTxt);
+  document.getElementById('redrawBtn').addEventListener('click', reDrawCanvas);
 }
 
 function onLoadPage() {
@@ -912,12 +914,8 @@ function onLoadPage() {
   bufCanvas.height = canvas.height;
   bufCtx = bufCanvas.getContext("2d");
 
-  canvas.addEventListener("mousedown", mouseListener);
-  canvas.addEventListener("mousemove", mouseListener);
-  canvas.addEventListener("mouseout", mouseListener);
-  canvas.addEventListener("mouseup", mouseListener);
-
+  setupEventListeners();
   initPage();
 }
 
-window.onload = onLoadPage();
+window.addEventListener('DOMContentLoaded', onLoadPage);

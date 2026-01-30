@@ -1,40 +1,38 @@
-function drawengine(targetCanvas, tarageCtx,  targetBufCanvas, targetBufctx, cmdList) {
+// Updated: 2026.01.30 - Modernized to ES6+
+function drawengine(targetCanvas, targetCtx, targetBufCanvas, targetBufctx, cmdList) {
     console.log("drawengine()");
 
-    cmdList.forEach(function(e) {
-        // console.log(e);
-        // console.log(e.length);
+    cmdList.forEach(e => {
         if (e.length > 0) {
-            var cmd = e.split(' ');
-            // console.log(cmd);
+            const cmd = e.split(' ');
             processCmd(cmd, targetBufctx);
         }
     });
 
-    tarageCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
-    tarageCtx.drawImage(targetBufCanvas, 0, 0);
+    targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+    targetCtx.drawImage(targetBufCanvas, 0, 0);
 }
 
-var drawCmdTable = {
-    color:processColor,
-    pencil_begin:processPencil,
-    pencil_end:processPencil,
-    line:processLine,
-    circle:processCircle,
-    rect:processRect,
-    square:processRect,
-    tri:processTri,
-    ellipse:processEllipse
-}
+const drawCmdTable = {
+    color: processColor,
+    pencil_begin: processPencil,
+    pencil_end: processPencil,
+    line: processLine,
+    circle: processCircle,
+    rect: processRect,
+    square: processRect,
+    tri: processTri,
+    ellipse: processEllipse
+};
 
-var enginePos = {
+const enginePos = {
     color: "red",
     filled: false,
-}
+};
 
 function processCmd(cmd, targetBufctx) {
-    console.log("processCmd: " + cmd[0]);
-    drawCmdTable[cmd[0]](cmd, targetBufctx);   
+    console.log(`processCmd: ${cmd[0]}`);
+    drawCmdTable[cmd[0]](cmd, targetBufctx);
 }
 
 function processColor(cmd, targetBufctx) {
@@ -51,15 +49,15 @@ function processLine(cmd, targetBufctx) {
     targetBufctx.beginPath();
     targetBufctx.strokeStyle = enginePos.color;
 
-    var X1 = {
-        X:parseInt(cmd[1]),
-        Y:parseInt(cmd[2])
-    }
-    
-    var X2= {
-        X:parseInt(cmd[3]),
-        Y:parseInt(cmd[4])   
-    }
+    const X1 = {
+        X: parseInt(cmd[1]),
+        Y: parseInt(cmd[2])
+    };
+
+    const X2 = {
+        X: parseInt(cmd[3]),
+        Y: parseInt(cmd[4])
+    };
 
     targetBufctx.moveTo(X1.X, X1.Y);
     targetBufctx.lineTo(X2.X, X2.Y);
@@ -74,9 +72,9 @@ function processCircle(cmd, targetBufctx) {
     targetBufctx.beginPath();
     targetBufctx.strokeStyle = enginePos.color;
 
-    var filled = (cmd[4] == 'F') ? true : false;
+    const filled = cmd[4] === 'F';
 
-    var circle = {
+    const circle = {
         X: parseInt(cmd[1]),
         Y: parseInt(cmd[2]),
         R: parseInt(cmd[3])
@@ -87,7 +85,7 @@ function processCircle(cmd, targetBufctx) {
     if (filled) {
         targetBufctx.fillStyle = enginePos.color;
         targetBufctx.fill();
-    } 
+    }
 
     targetBufctx.closePath();
     targetBufctx.stroke();
@@ -99,9 +97,9 @@ function processEllipse(cmd, targetBufctx) {
     targetBufctx.beginPath();
     targetBufctx.strokeStyle = enginePos.color;
 
-    var filled = (cmd[5] == 'F') ? true : false;
+    const filled = cmd[5] === 'F';
 
-    var ellipse = {
+    const ellipse = {
         X: parseInt(cmd[1]),
         Y: parseInt(cmd[2]),
         A: parseInt(cmd[3]),
@@ -113,7 +111,7 @@ function processEllipse(cmd, targetBufctx) {
     if (filled) {
         targetBufctx.fillStyle = enginePos.color;
         targetBufctx.fill();
-    } 
+    }
 
     targetBufctx.closePath();
     targetBufctx.stroke();
@@ -125,23 +123,23 @@ function processRect(cmd, targetBufctx) {
     targetBufctx.beginPath();
     targetBufctx.strokeStyle = enginePos.color;
 
-    var X1 = {
-        X:parseInt(cmd[1]),
-        Y:parseInt(cmd[2])
-    }
-    
-    var X2= {
-        X:parseInt(cmd[3]),
-        Y:parseInt(cmd[4])   
-    }
+    const X1 = {
+        X: parseInt(cmd[1]),
+        Y: parseInt(cmd[2])
+    };
 
-    var filled = (cmd[5] == 'F') ? true : false;
+    const X2 = {
+        X: parseInt(cmd[3]),
+        Y: parseInt(cmd[4])
+    };
 
-    var box = {
+    const filled = cmd[5] === 'F';
+
+    const box = {
         W: X2.X - X1.X,
         H: X2.Y - X1.Y
     };
-    
+
     if (filled) {
         targetBufctx.fillStyle = enginePos.color;
         targetBufctx.fillRect(X1.X, X1.Y, box.W, box.H);
@@ -158,22 +156,22 @@ function processTri(cmd, targetBufctx) {
     targetBufctx.beginPath();
     targetBufctx.strokeStyle = enginePos.color;
 
-    var filled = (cmd[7] == 'F') ? true : false;
+    const filled = cmd[7] === 'F';
 
-    var X1 = {
-        X:parseInt(cmd[1]),
-        Y:parseInt(cmd[2])
-    }
-    
-    var X2= {
-        X:parseInt(cmd[3]),
-        Y:parseInt(cmd[4])   
-    }
+    const X1 = {
+        X: parseInt(cmd[1]),
+        Y: parseInt(cmd[2])
+    };
 
-    var X3= {
-        X:parseInt(cmd[5]),
-        Y:parseInt(cmd[6])   
-    }
+    const X2 = {
+        X: parseInt(cmd[3]),
+        Y: parseInt(cmd[4])
+    };
+
+    const X3 = {
+        X: parseInt(cmd[5]),
+        Y: parseInt(cmd[6])
+    };
 
     targetBufctx.moveTo(X1.X, X1.Y);
     targetBufctx.lineTo(X2.X, X2.Y);
@@ -184,7 +182,7 @@ function processTri(cmd, targetBufctx) {
     if (filled) {
         targetBufctx.fillStyle = enginePos.color;
         targetBufctx.fill();
-      } 
+    }
 
     targetBufctx.closePath();
 }

@@ -1,143 +1,188 @@
-<html>
+<!DOCTYPE html>
+<html lang="ko">
   <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chobo painter</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 10px;
+        overflow-x: hidden;
+      }
+
       canvas {
         border: 1px solid blue;
+        max-width: 100%;
+        height: auto;
+        touch-action: none;
       }
 
-      .jb_table {
-        display: table;
+      .container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
       }
 
-      .row {
-        border-radius: 10px;
-        display: table-row;
+      .toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2px;
+        flex-shrink: 0;
       }
 
-      .cell {
-        display: table-cell;
-        vertical-align: top;
+      .toolbar img {
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .canvas-container {
+        flex: 1;
+        min-width: 300px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .controls {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 200px;
+      }
+
+      .controls input[type="file"],
+      .controls input[type="button"],
+      .controls button {
+        width: 100%;
+        padding: 5px;
       }
 
       textarea {
         background-color: #fcf3cf;
+        width: 100%;
+        resize: vertical;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          flex-direction: column;
+        }
+
+        .toolbar {
+          grid-template-columns: repeat(4, 1fr);
+          order: -1;
+        }
+
+        .controls {
+          width: 100%;
+        }
+
+        canvas {
+          width: 100%;
+        }
       }
     </style>
-    <script language="JavaScript">
+    <script>
       // Date: 2019.04.24
+      // Updated: 2026.01.30 - Modernized to ES6+
 
-      var textareaList = ["history"];
+      const textareaList = ["history"];
 
       function clearText(idOfTextArea) {
         document.getElementById(idOfTextArea).value = "";
       }
 
       function SaveAsTxt() {
-        var fileName = document.getElementById("title").value;
-        if (fileName.length == 0) {
+        let fileName = document.getElementById("title").value.trim();
+        if (fileName.length === 0) {
           fileName = "image";
         }
         fileName += ".txt";
 
-        var preData = 'version: V0.617a1\n';
-        var postData =  preData + document.getElementById("history").value;
+        const preData = 'version: V0.617a1\n';
+        const postData = preData + document.getElementById("history").value;
 
-        var link = document.createElement("a");
+        const link = document.createElement("a");
         link.setAttribute("download", fileName);
         link.setAttribute(
           "href",
-          "data:" +
-            "application/[txt]" +
-            ";charset=utf-8," +
-            encodeURIComponent(postData)
+          `data:application/txt;charset=utf-8,${encodeURIComponent(postData)}`
         );
         link.click();
       }
 
       function SaveAsJson() {
         console.log("SaveAsJson");
-        var fileName = document.getElementById("title").value;
-        if (fileName.length == 0) {
-          fileName = "imsge";
+        let fileName = document.getElementById("title").value.trim();
+        if (fileName.length === 0) {
+          fileName = "image";
         }
 
         fileName += ".json";
 
-        var preData = {'version':'V0.617a1'};
-        textareaList.forEach(function(e) {
+        const preData = { version: 'V0.617a1' };
+        textareaList.forEach(e => {
           preData[e] = document.getElementById(e).value;
         });
 
-        var jsonData = JSON.stringify(preData);
+        const jsonData = JSON.stringify(preData);
 
-        var link = document.createElement("a");
-        var file = new Blob([jsonData], { type: "text/plain" });
+        const link = document.createElement("a");
+        const file = new Blob([jsonData], { type: "application/json" });
         link.href = URL.createObjectURL(file);
         link.download = fileName;
         link.click();
+
+        // Clean up the URL object
+        setTimeout(() => URL.revokeObjectURL(link.href), 100);
       }
 
       function isJsonFile(filename) {
-        var ridx = filename.lastIndexOf(".");
-        var extension = filename.substring(ridx + 1);
-
-        console.log(extension);
-
-        if (extension.length != 4 || extension.toLowerCase() != "json") {
-          return false;
-        }
-        return true;
+        const extension = filename.split('.').pop()?.toLowerCase();
+        return extension === "json";
       }
 
       function isTextFile(filename) {
-        var ridx = filename.lastIndexOf(".");
-        var extension = filename.substring(ridx + 1);
-
-        console.log(extension);
-
-        if (extension.length != 3 || extension.toLowerCase() != "txt") {
-          return false;
-        }
-        return true;
+        const extension = filename.split('.').pop()?.toLowerCase();
+        return extension === "txt";
       }
 
-
       function loadFile() {
-        var loadFile = document.getElementById("load_filename");
-        var file = loadFile.files[0];
-          
+        const loadFileInput = document.getElementById("load_filename");
+        const file = loadFileInput.files[0];
+
         if (!file) {
           return;
         }
 
-        var fileName = document.getElementById("load_filename").value;
-        var ridx = fileName.lastIndexOf("\\");
-
-        fileName = fileName.substring(ridx + 1);
+        const fileName = file.name;
 
         if (isJsonFile(fileName)) {
           LoadJson(file, fileName);
-        } else if(isTextFile(fileName)) {
+        } else if (isTextFile(fileName)) {
           LoadText(file, fileName);
-        } 
+        }
       }
 
       function LoadJson(file, fileName) {
         document.getElementById("title").value = fileName;
 
-        var reader = new FileReader();
-        reader.onload = function(e) {
-          var contents = e.target.result;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const contents = e.target.result;
           displayLoadJsonData(contents);
         };
         reader.readAsText(file);
       }
 
       function displayLoadJsonData(contents) {
-        var noteData = JSON.parse(contents);
+        const noteData = JSON.parse(contents);
 
-        var version = noteData['version'];
+        const version = noteData['version'];
         console.log(version);
         document.getElementById('history').value = noteData['history'];
         reDrawCanvas();
@@ -146,23 +191,23 @@
       function LoadText(file, fileName) {
         document.getElementById("title").value = fileName;
 
-        var reader = new FileReader();
-        reader.onload = function(e) {
-          var contents = e.target.result;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const contents = e.target.result;
           displayLoadTextData(contents);
         };
         reader.readAsText(file);
       }
 
       function displayLoadTextData(contents) {
-        var noteData = contents.split('\n');
-        var history = "";
-         
-        noteData.forEach(function (e){
-          if (e[0] != 'v') {
+        const noteData = contents.split('\n');
+        let history = "";
+
+        noteData.forEach(e => {
+          if (e[0] !== 'v') {
             history += e + "\n";
           }
-        }); 
+        });
         document.getElementById('history').value = history;
         reDrawCanvas();
       }
@@ -171,126 +216,56 @@
   </head>
 
   <body>
-    <div class="jb_table">
-      <div class="row">
-        <span class="cell" width="82">
-          <div>
-            <div class="jb_table">
-              <div class="row">
-                <span class="cell">
-                  <img src="img/red.png" onclick="selectColor('red')" />
-                  <img src="img/orange.png" onclick="selectColor('orange')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/yellow.png" onclick="selectColor('yellow')" />
-                  <img src="img/green.png" onclick="selectColor('green')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/blue.png" onclick="selectColor('blue')" />
-                  <img src="img/lightblue.png" onclick="selectColor('lightblue')" />
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/lightgreen.png" onclick="selectColor('lightgreen')"/>
-                  <img src="img/brown.png" onclick="selectColor('brown')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/purple.png" onclick="selectColor('purple')" />
-                  <img src="img/pink.png" onclick="selectColor('pink')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/gray.png" onclick="selectColor('gray')" />
-                  <img src="img/lightgray.png" onclick="selectColor('lightgray')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/black.png" onclick="selectColor('black')"/>
-                  <img src="img/white.png" onclick="selectColor('white')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/pencil.png"  onclick="selectTool('pencil')" />
-                  <img src="img/line.png"  onclick="selectTool('line')" />
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/circle.png" onclick="selectTool('circle')"/>
-                  <img src="img/filledcircle.png" onclick="selectTool('filledcircle')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/ellipse.png" onclick="selectTool('ellipse')"/>
-                  <img src="img/filledellipse.png" onclick="selectTool('filledellipse')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/square.png" onclick="selectTool('square')"/>
-                  <img src="img/filledsquare.png" onclick="selectTool('filledsquare')"/>
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/rect.png" onclick="selectTool('rect')" />
-                  <img src="img/filledrect.png" onclick="selectTool('filledrect')" />
-                </span>
-              </div>
-              <div class="row">
-                <span class="cell">
-                  <img src="img/triangle.png" onclick="selectTool('tri')" />
-                  <img src="img/filledtriangle.png" onclick="selectTool('filledtri')" />
-                </span>
-              </div>
-              <div class="row">
-                  <span class="cell">
-                    <img src="img/undo.png" onclick="undo()"/>
-                    <img src="img/redo.png" onclick="redo()"/>
-                  </span>
-                </div>
-            </div>
-          </div>
-        </span>
-        <span class="cell">
-          <div>
-            <canvas id="canvas" width="720" height="720"></canvas>
-          </div>
-        </span>
-        <span class="cell">
-          <INPUT type="file" id="load_filename" value="Load" onChange="loadFile()" />
-          <div>Title <input id="title" size="15" /></div>
-          <div>
-            <a id="saveImage" download="image.png">
-                <INPUT type="button" value="Save" onClick="saveImage()" />
-            </a>
-            <INPUT type="button" value="Clear" onClick="initPage()" />
-            <INPUT type="button" value="History" onClick="showHistory()" />
-          </div>
-          <div>
-            <input type="button" value="Save as Json" onClick="SaveAsJson()" />
-            <input type="button" value="Save as Txt" onClick="SaveAsTxt()" />
-          </div>
-          <div>
-            <textarea id="history" cols="40" rows="37" style="display: none;"></textarea>
-          </div>
-          <div id="command">
-          </div>
-              <INPUT type="button" value="Redraw" onClick="reDrawCanvas()" />
-          <div>
-          </div>
-        </span>
+    <div class="container">
+      <div class="toolbar">
+        <img src="img/red.png" data-action="color" data-value="red" alt="Red" />
+        <img src="img/orange.png" data-action="color" data-value="orange" alt="Orange" />
+        <img src="img/yellow.png" data-action="color" data-value="yellow" alt="Yellow" />
+        <img src="img/green.png" data-action="color" data-value="green" alt="Green" />
+        <img src="img/blue.png" data-action="color" data-value="blue" alt="Blue" />
+        <img src="img/lightblue.png" data-action="color" data-value="lightblue" alt="Light Blue" />
+        <img src="img/lightgreen.png" data-action="color" data-value="lightgreen" alt="Light Green" />
+        <img src="img/brown.png" data-action="color" data-value="brown" alt="Brown" />
+        <img src="img/purple.png" data-action="color" data-value="purple" alt="Purple" />
+        <img src="img/pink.png" data-action="color" data-value="pink" alt="Pink" />
+        <img src="img/gray.png" data-action="color" data-value="gray" alt="Gray" />
+        <img src="img/lightgray.png" data-action="color" data-value="lightgray" alt="Light Gray" />
+        <img src="img/black.png" data-action="color" data-value="black" alt="Black" />
+        <img src="img/white.png" data-action="color" data-value="white" alt="White" />
+        <img src="img/pencil.png" data-action="tool" data-value="pencil" alt="Pencil" />
+        <img src="img/line.png" data-action="tool" data-value="line" alt="Line" />
+        <img src="img/circle.png" data-action="tool" data-value="circle" alt="Circle" />
+        <img src="img/filledcircle.png" data-action="tool" data-value="filledcircle" alt="Filled Circle" />
+        <img src="img/ellipse.png" data-action="tool" data-value="ellipse" alt="Ellipse" />
+        <img src="img/filledellipse.png" data-action="tool" data-value="filledellipse" alt="Filled Ellipse" />
+        <img src="img/square.png" data-action="tool" data-value="square" alt="Square" />
+        <img src="img/filledsquare.png" data-action="tool" data-value="filledsquare" alt="Filled Square" />
+        <img src="img/rect.png" data-action="tool" data-value="rect" alt="Rectangle" />
+        <img src="img/filledrect.png" data-action="tool" data-value="filledrect" alt="Filled Rectangle" />
+        <img src="img/triangle.png" data-action="tool" data-value="tri" alt="Triangle" />
+        <img src="img/filledtriangle.png" data-action="tool" data-value="filledtri" alt="Filled Triangle" />
+        <img src="img/undo.png" data-action="undo" alt="Undo" />
+        <img src="img/redo.png" data-action="redo" alt="Redo" />
+      </div>
+
+      <div class="canvas-container">
+        <canvas id="canvas" width="720" height="720"></canvas>
+      </div>
+
+      <div class="controls">
+        <input type="file" id="load_filename" accept=".txt,.json" />
+        <div>
+          <label for="title">Title:</label>
+          <input type="text" id="title" />
+        </div>
+        <button type="button" id="saveImageBtn">Save Image</button>
+        <button type="button" id="clearBtn">Clear</button>
+        <button type="button" id="historyBtn">Show/Hide History</button>
+        <button type="button" id="saveJsonBtn">Save as Json</button>
+        <button type="button" id="saveTxtBtn">Save as Txt</button>
+        <button type="button" id="redrawBtn">Redraw</button>
+        <textarea id="history" rows="20" style="display: none;"></textarea>
+        <div id="command"></div>
       </div>
     </div>
     <script src="painter.js"></script>
