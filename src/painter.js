@@ -167,11 +167,22 @@ const drawCommand = () => ({
 
 function getMousePosition(event) {
   const rect = canvas.getBoundingClientRect();
+  
+  // 디바이스의 픽셀 비율이 아닌 캔버스의 내부 좌표와 렌더링된 크기의 비율을 계산
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
 
-  const clientX = event.clientX || (event.touches && event.touches[0]?.clientX) || 0;
-  const clientY = event.clientY || (event.touches && event.touches[0]?.clientY) || 0;
+  let clientX, clientY;
+  if (event.touches && event.touches.length > 0) {
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else if (event.changedTouches && event.changedTouches.length > 0) {
+    clientX = event.changedTouches[0].clientX;
+    clientY = event.changedTouches[0].clientY;
+  } else {
+    clientX = event.clientX;
+    clientY = event.clientY;
+  }
 
   const x = (clientX - rect.left) * scaleX;
   const y = (clientY - rect.top) * scaleY;
@@ -180,7 +191,11 @@ function getMousePosition(event) {
 }
 
 function mouseListener(event) {
-  event.preventDefault();
+  // 캔버스 내에서의 터치 이벤트만 기본 동작을 막음 (스크롤 방지)
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+  
   const eventType = event.type.replace('touch', 'mouse').replace('start', 'down').replace('end', 'up').replace('cancel', 'out');
 
   switch (eventType) {
@@ -474,12 +489,12 @@ function squareMouseUp(event) {
     cvs.drawImage(bufCanvas, 0, 0);
 
     const newSquare = drawCommand();
-    newSqure.mode = "square";
-    newSqure.filled = pos.filled;
-    newSqure.X1 = { X: pos.X, Y: pos.Y };
-    newSqure.X2 = { X: (pos.X + box.H), Y: currentPos.Y };
-    commandHistory.push(newSqure.toCommand());
-    addHistory(newSqure.toCommand());
+    newSquare.mode = "square";
+    newSquare.filled = pos.filled;
+    newSquare.X1 = { X: pos.X, Y: pos.Y };
+    newSquare.X2 = { X: (pos.X + box.H), Y: currentPos.Y };
+    commandHistory.push(newSquare.toCommand());
+    addHistory(newSquare.toCommand());
 
     pos.isDraw = false;
   }
@@ -905,6 +920,30 @@ function setupEventListeners() {
   document.getElementById('redrawBtn').addEventListener('click', reDrawCanvas);
 }
 
+function resizeCanvas() {
+  const container = document.querySelector('.canvas-container');
+  const containerWidth = container.clientWidth;
+  
+  // 기본 내부 해상도 720x720
+  const canvasInternalSize = 720;
+
+  // 화면 너비에 맞춰 캔버스의 표시 크기 조정
+  // padding 등을 고려하여 여유 공간 확보 (body padding 10px * 2)
+  const availableWidth = containerWidth - 10;
+  const displaySize = Math.min(availableWidth, canvasInternalSize);
+
+  canvas.style.width = displaySize + 'px';
+  canvas.style.height = displaySize + 'px';
+
+  // 실제 캔버스의 내부 해상도는 720x720으로 고정하여 그림의 질 유지
+  if (canvas.width !== canvasInternalSize || canvas.height !== canvasInternalSize) {
+    canvas.width = canvasInternalSize;
+    canvas.height = canvasInternalSize;
+    bufCanvas.width = canvasInternalSize;
+    bufCanvas.height = canvasInternalSize;
+  }
+}
+
 function onLoadPage() {
   canvas = document.getElementById("canvas");
   cvs = canvas.getContext("2d");
@@ -914,8 +953,21 @@ function onLoadPage() {
   bufCanvas.height = canvas.height;
   bufCtx = bufCanvas.getContext("2d");
 
+  resizeCanvas();
   setupEventListeners();
   initPage();
+
+  // 화면 크기 변경 시 캔버스 크기 재조정
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const oldCommands = [...commandHistory];
+      resizeCanvas();
+      clearCanvas();
+      drawengine(canvas, cvs, bufCanvas, bufCtx, oldCommands);
+    }, 250);
+  });
 }
 
 window.addEventListener('DOMContentLoaded', onLoadPage);
