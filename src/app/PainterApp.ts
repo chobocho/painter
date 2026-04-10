@@ -63,15 +63,14 @@ export class PainterApp {
     root.innerHTML = `
       <div id="painter-root">
         <header id="menu-bar">
+          <button type="button" id="toggle-panel-btn" title="우측 패널 숨기기/보기">📑 패널</button>
           <div id="palette-area"></div>
           <div id="brush-controls">
-            <label>Size <input type="range" id="brush-size" min="1" max="64" value="${this.settings.brushSize}"></label>
-            <label>Tol <input type="range" id="tolerance" min="0" max="128" value="${this.settings.tolerance}"></label>
-            <label><input type="checkbox" id="mirror-x"> Mirror X</label>
-            <label><input type="checkbox" id="mirror-y"> Mirror Y</label>
+            <label>굵기 <input type="range" id="brush-size" min="1" max="64" value="${this.settings.brushSize}"></label>
+            <label>허용 <input type="range" id="tolerance" min="0" max="128" value="${this.settings.tolerance}"></label>
+            <label><input type="checkbox" id="mirror-x"> 좌우대칭</label>
+            <label><input type="checkbox" id="mirror-y"> 상하대칭</label>
           </div>
-          <div id="menu-spacer"></div>
-          <button type="button" id="toggle-panel-btn" title="Show / hide right panel (P)">📑 Panel</button>
         </header>
         <aside id="tool-area"></aside>
         <main id="canvas-area">
@@ -83,6 +82,7 @@ export class PainterApp {
           <div id="project-panel"></div>
         </section>
         <footer id="status-bar"></footer>
+        <button type="button" id="floating-panel-btn" title="우측 패널 숨기기/보기">📑</button>
       </div>
     `;
 
@@ -159,18 +159,29 @@ export class PainterApp {
     });
     void this.projectPanel.render();
 
-    // Right-panel toggle in the menu bar.
+    // Right-panel toggle. Two buttons drive the same handler so it's
+    // reachable from both the menu bar and a floating fallback (the menu
+    // bar can be visually crowded on a Fold7 with the palette + brush
+    // controls).
     const rightPanelEl = root.querySelector("#right-panel") as HTMLElement;
     const togglePanelBtn = root.querySelector("#toggle-panel-btn") as HTMLButtonElement;
+    const floatingBtn = root.querySelector("#floating-panel-btn") as HTMLButtonElement;
     const rootEl = root.querySelector("#painter-root") as HTMLElement;
     let rightPanelHidden = false;
-    togglePanelBtn.addEventListener("click", () => {
+    const togglePanel = (e?: Event): void => {
+      e?.stopPropagation();
       rightPanelHidden = !rightPanelHidden;
       rightPanelEl.style.display = rightPanelHidden ? "none" : "";
       rootEl.classList.toggle("right-hidden", rightPanelHidden);
+      togglePanelBtn.textContent = rightPanelHidden ? "📑 패널 보기" : "📑 패널 숨기기";
+      floatingBtn.textContent = rightPanelHidden ? "📑" : "✕";
       // Force the canvas to refit since its column just expanded/collapsed.
       requestAnimationFrame(() => fitCanvasToContainer());
-    });
+    };
+    togglePanelBtn.addEventListener("click", togglePanel);
+    floatingBtn.addEventListener("click", togglePanel);
+    togglePanelBtn.textContent = "📑 패널 숨기기";
+    floatingBtn.textContent = "✕";
 
     // Brush size slider
     const brushSize = root.querySelector("#brush-size") as HTMLInputElement;

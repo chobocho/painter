@@ -66,8 +66,11 @@ export class InputAdapter {
     this.el.addEventListener("pointerdown", onDown);
     this.el.addEventListener("pointermove", onMove);
     this.el.addEventListener("pointerup", onUp);
+    // Only `pointercancel` triggers the cancel path. `pointerleave` is a
+    // hover boundary event that fires on every touch release (and on any
+    // mouse drag that crosses the canvas edge), so binding it to cancel
+    // would erase strokes the moment the user lifts a finger or drags out.
     this.el.addEventListener("pointercancel", onCancel);
-    this.el.addEventListener("pointerleave", onCancel);
 
     const onKey = (e: KeyboardEvent) => {
       const tgt = e.target as HTMLElement | null;
@@ -81,7 +84,6 @@ export class InputAdapter {
       this.el.removeEventListener("pointermove", onMove);
       this.el.removeEventListener("pointerup", onUp);
       this.el.removeEventListener("pointercancel", onCancel);
-      this.el.removeEventListener("pointerleave", onCancel);
       window.removeEventListener("keydown", onKey);
     });
   }

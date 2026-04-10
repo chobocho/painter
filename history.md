@@ -415,3 +415,126 @@ The user-facing changes:
 Resume from this point by reading round 3 above, running
 `./build.sh`, and confirming `# pass 105` in the test summary.
 
+> **참고:** 사용자 요청에 따라 Round 4부터는 한글로 작성합니다. 이전 라운드(1–3)는 영문 그대로 유지합니다.
+
+---
+
+## 2026-04-10 — Round 4: 도형이 commit되지 않음, 우측 패널 토글 안 보임, 한글화
+
+### 사용자 보고
+
+1. 테스트를 더 강화해야 한다 — 여전히 동작하지 않는 기능이 너무 많다.
+2. 히스토리가 누적되지 않는다.
+3. 도형을 그리면 그리는 모습은 보이는데 release 후 실제 레이어에 반영되지 않는다.
+4. 우측 정보 패널 on/off 버튼이 안 보인다.
+5. 앞으로 `history.md`는 한글로 작성한다.
+6. `README.md`도 한글로 번역한다.
+
+### Round 4 · 코디네이터 사전 점검
+
+- `git push --dry-run origin master` 정상 (master까지 푸시 권한 확인).
+- `master`의 테스트는 105/105 통과, `BUILD OK` 상태.
+- 그렇다면 사용자가 보는 결함은 **테스트가 시뮬레이션하지 않는 이벤트 시퀀스** 때문일 가능성이 큼.
+
+### Round 4 · 진단
+
+핵심 단서는 사용자 표현 **"그리는 모습은 보이는데 실제 레이어에 반영이 안되"**. 이건 `onPointerMove` 단계의 미리보기는 정상 동작하지만 release 후에 도형이 사라진다는 뜻. 누군가 stroke를 cancel하고 있다는 신호.
+
+`src/input/InputAdapter.ts:70`을 확인하니 정확한 범인:
+
+```ts
+this.el.addEventListener("pointerleave", onCancel);
+```
+
+`pointerleave`는 포인터가 요소 경계를 벗어날 때 발화하는 호버 이벤트입니다. 그런데 이걸 cancel 경로에 묶었습니다. 터치 디바이스에서 손을 떼면 브라우저가 흔히 다음 순서로 이벤트를 보냅니다:
+
+1. `pointermove` (마지막 위치)
+2. `pointerleave` (포인터가 사라짐)
+3. `pointerup`
+
+`pointerleave`가 먼저 발화 → `onCancel` 호출 → `tool.onPointerCancel()` → `restoreFromShadow()`가 도형/펜슬 stroke를 모두 지움 → `this.down = false`. 이어서 `pointerup`이 들어와도 `if (this.down)` 가드 때문에 `onPointerUp`이 실행되지 않음 → commit 없음 → 히스토리 누적 안 됨.
+
+데스크톱 마우스도 동일: 캔버스 밖으로 드래그하는 순간 stroke 전체가 지워짐.
+
+**한 줄 버그가 사용자 보고 1·2·3을 모두 설명**합니다.
+
+Round 3의 통합 테스트는 `pointerdown / pointermove / pointerup`만 dispatch하고 `pointerleave`를 보내지 않아서 못 잡았습니다. **모의가 실제 브라우저의 이벤트 시퀀스를 충실히 재현하지 않으면 같은 종류의 버그가 계속 통과**한다는 점을 다시 확인.
+
+우측 패널 토글 버튼(보고 4)도 점검: Round 3에서 menu-bar에 `📑 Panel` 버튼을 추가했지만, `#menu-bar`에 `overflow: hidden`이 걸려 있고 brush controls가 폭을 많이 차지해 폴드7에서 버튼이 잘려 보이지 않는 상황.
+
+### Round 4 · 기획 에이전트
+
+다섯 갈래로 수정안 설계:
+
+1. **`InputAdapter`에서 `pointerleave` 바인딩 제거**. cancel 경로는 `pointercancel`만 트리거. `pointerleave`는 호버 UI용일 뿐.
+2. **회귀 테스트 추가**. `pointerdown / pointermove / pointerleave / pointerup` 시퀀스를 dispatch해서 stroke가 commit되는지 확인. `pointercancel`은 여전히 cancel하는지도 확인. 도형이 release 후 레이어에 픽셀로 남는지도 직접 확인. undo/redo 라운드트립도 확인.
+3. **우측 패널 토글 항상 보이게**. menu-bar 버튼은 그대로 두되, 위치를 좌측 첫 번째로 이동 + 강조색(accent) 처리. 추가로 `#painter-root` 우상단에 `position: absolute` 플로팅 버튼(원형, ✕/📑)을 두어 menu-bar가 잘려도 항상 접근 가능. menu-bar는 `overflow-x: auto`로 변경해 잘림 대신 가로 스크롤.
+4. **`README.md` 한글로 다시 작성**. 새 TS 앱 구조에 맞춰 기능, 단축키, 빌드 방법, 디렉토리 구조 정리.
+5. **`history.md` Round 4 이후는 한글로**. 이전 라운드(1–3)는 그대로 두고 Round 4부터 한글 추가.
+
+### Round 4 · 개발 에이전트
+
+#### 핵심 수정
+
+- `src/input/InputAdapter.ts` — `pointerleave` 바인딩 1줄 제거. cleanup도 같이 정리. 주석으로 "왜 binding하지 않는가"를 명시해 향후 누가 다시 추가하지 않도록 방지.
+- `src/app/PainterApp.ts`:
+  - menu-bar의 토글 버튼을 첫 번째 자리(좌측)로 이동, 라벨을 `📑 패널` 로 한글화
+  - `#painter-root` 끝에 `#floating-panel-btn` 원형 버튼 추가
+  - `togglePanel()` 헬퍼가 두 버튼의 라벨을 동기화 (`📑 패널 숨기기` ↔ `📑 패널 보기`, `✕` ↔ `📑`)
+  - brush controls 라벨 한글화 (`Size→굵기`, `Tol→허용`, `Mirror X→좌우대칭`, `Mirror Y→상하대칭`)
+- `src/style.css`:
+  - `#painter-root`에 `position: relative` 추가 (플로팅 버튼의 absolute 기준점)
+  - `#menu-bar`를 `overflow-x: auto / overflow-y: hidden`으로 변경 (잘림 → 가로 스크롤)
+  - `#toggle-panel-btn`에 accent 색상 + `flex-shrink: 0` 적용 (절대 줄어들지 않음)
+  - `#floating-panel-btn` 원형 fixed 버튼 스타일
+
+#### 회귀 테스트 추가 (`integration.test.ts`)
+
+새 `describe` 블록 `pointerleave / pointercancel semantics (regression for round 4)`. 8개 케이스:
+
+1. `pencil: pointerleave between move and up does NOT cancel the stroke` — 핵심 회귀.
+2. `rect-filled: shape stays on layer after release (issue 6)` — 사용자 보고 6번 직접 재현.
+3. `rect-filled: pointerleave during drag does NOT cancel the shape` — 도형 + leave 조합.
+4. `ellipse-filled: stays on layer after release (issue 6)`.
+5. `rect-filled: undo restores blank, redo restores shape` — 히스토리 round-trip 검증.
+6. `five strokes accumulate even with pointerleave between each pair` — 사용자 보고 2번(누적) 직접 재현. 다섯 stroke 사이마다 leave 발화.
+7. `pointercancel DOES cancel the stroke` — cancel 경로가 여전히 살아있는지 확인.
+8. `after a stroke commits, the layer pixels persist across re-renders` — `markDirty` 후에도 픽셀 보존되는지.
+
+### Round 4 · 검증 에이전트
+
+수정 적용 후 테스트: **113 / 113 통과**.
+
+수정이 진짜 회귀 테스트를 지나가는지 추가 검증을 위해 임시로 `pointerleave` 바인딩을 다시 켜서 테스트 재실행:
+
+```
+not ok - pencil: pointerleave between move and up does NOT cancel the stroke
+not ok - rect-filled: pointerleave during drag does NOT cancel the shape
+not ok - five strokes accumulate even with pointerleave between each pair
+# pass 110
+# fail 3
+```
+
+세 회귀 테스트가 정확히 `pointerleave` 버그를 잡는 것이 확인됨. 백업에서 수정본 복원 후 다시 113/113 통과.
+
+### Round 4 · 빌드 / 배포
+
+`./build.sh` 정상: 113/113 통과 + `BUILD OK`.
+
+### Round 4 · 코디네이터 인계
+
+이번 라운드 user-visible 변경:
+
+- **모든 도구가 release 후에도 레이어에 픽셀을 남깁니다.** Round 4 이전엔 `pointerleave`가 stroke를 cancel하면서 도형도 펜슬도 모두 사라졌습니다.
+- **히스토리가 stroke마다 누적됩니다.** 같은 원인이었으므로 같이 해결.
+- **우측 패널 토글 버튼이 항상 보입니다.** menu-bar 좌측의 강조색 `📑 패널` 버튼 + 우상단 원형 플로팅 버튼 두 곳에서 토글 가능.
+- **`README.md`를 한글로 다시 작성**.
+- **`history.md` Round 4부터 한글**.
+- **테스트 105 → 113 (8개 신규).** 모두 `pointerleave` 시나리오 + 도형 commit 픽셀 검증.
+
+가장 중요한 교훈:
+> **모의 이벤트는 실제 브라우저의 이벤트 시퀀스를 충실히 재현해야 한다.**
+> 도구별 단위 테스트가 100개여도 `pointerdown → pointermove → pointerup` 만 dispatch한다면, 실제 브라우저가 보내는 `pointerdown → pointermove → pointerleave → pointerup` 시퀀스에서 발생하는 버그를 잡을 수 없다. 다음 라운드에서 새 이벤트 종류(`gotpointercapture`, `lostpointercapture`, `pointerover`, `pointerout` 등)를 다룰 일이 생기면 통합 테스트 시퀀스에 포함시킬 것.
+
+다음 세션은 위 회귀 테스트 8개를 먼저 실행해 보고 (`node dist/src/test/main.js | grep round`) `# pass 113`을 확인한 뒤 작업 시작 권장.
+

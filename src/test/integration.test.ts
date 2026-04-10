@@ -146,6 +146,135 @@ describe("integration: pencil end-to-end through InputAdapter", () => {
   });
 });
 
+describe("integration: pointerleave / pointercancel semantics (regression for round 4)", () => {
+  // The round-4 bug was that InputAdapter bound `pointerleave` to the cancel
+  // path. On every touch release the browser fires
+  //   pointermove → pointerleave → pointerup
+  // so the leave handler restored the layer from the shadow snapshot,
+  // erasing the stroke, and the subsequent pointerup was gated out by
+  // `if (this.down)`. Both pencil strokes AND shape commits silently
+  // disappeared.
+
+  it("pencil: pointerleave between move and up does NOT cancel the stroke", () => {
+    const w = wirePainterApp();
+    const layer = w.stack.getActive()!;
+    dispatch(w.el, "pointerdown", 10, 10);
+    dispatch(w.el, "pointermove", 30, 30);
+    dispatch(w.el, "pointerleave", 30, 30);
+    dispatch(w.el, "pointerup",   30, 30);
+    assertEqual(w.history.size().past, 1, "stroke should commit even after pointerleave");
+    assertTrue(alphaAt(layer, 20, 20) > 0, "stroke pixels should still be on the layer");
+    w.destroy();
+  });
+
+  it("rect-filled: shape stays on layer after release (issue 6)", () => {
+    const w = wirePainterApp();
+    const layer = w.stack.getActive()!;
+    const tool = new RectTool();
+    tool.filled = true;
+    w.setTool(tool);
+    dispatch(w.el, "pointerdown", 10, 10);
+    dispatch(w.el, "pointermove", 50, 50);
+    dispatch(w.el, "pointerup",   50, 50);
+    assertEqual(w.history.size().past, 1);
+    assertTrue(alphaAt(layer, 30, 30) > 0, "filled rect interior should remain after release");
+    assertTrue(alphaAt(layer, 15, 15) > 0);
+    assertTrue(alphaAt(layer, 45, 45) > 0);
+    w.destroy();
+  });
+
+  it("rect-filled: pointerleave during drag does NOT cancel the shape", () => {
+    const w = wirePainterApp();
+    const layer = w.stack.getActive()!;
+    const tool = new RectTool();
+    tool.filled = true;
+    w.setTool(tool);
+    dispatch(w.el, "pointerdown", 10, 10);
+    dispatch(w.el, "pointermove", 50, 50);
+    dispatch(w.el, "pointerleave", 50, 50);
+    dispatch(w.el, "pointerup",   50, 50);
+    assertEqual(w.history.size().past, 1, "shape should commit despite pointerleave");
+    assertTrue(alphaAt(layer, 30, 30) > 0, "shape interior must remain on layer");
+    w.destroy();
+  });
+
+  it("ellipse-filled: stays on layer after release (issue 6)", () => {
+    const w = wirePainterApp();
+    const layer = w.stack.getActive()!;
+    const tool = new EllipseTool();
+    tool.filled = true;
+    w.setTool(tool);
+    dispatch(w.el, "pointerdown", 20, 20);
+    dispatch(w.el, "pointermove", 80, 80);
+    dispatch(w.el, "pointerup",   80, 80);
+    assertEqual(w.history.size().past, 1);
+    assertTrue(alphaAt(layer, 50, 50) > 0, "ellipse center should be painted");
+    w.destroy();
+  });
+
+  it("rect-filled: undo restores blank, redo restores shape (full round-trip)", () => {
+    const w = wirePainterApp();
+    const layer = w.stack.getActive()!;
+    const tool = new RectTool();
+    tool.filled = true;
+    w.setTool(tool);
+    dispatch(w.el, "pointerdown", 10, 10);
+    dispatch(w.el, "pointermove", 50, 50);
+    dispatch(w.el, "pointerup",   50, 50);
+    assertTrue(alphaAt(layer, 30, 30) > 0);
+    w.history.undo({ stack: w.stack });
+    assertEqual(alphaAt(layer, 30, 30), 0, "after undo, layer should be blank");
+    w.history.redo({ stack: w.stack });
+    assertTrue(alphaAt(layer, 30, 30) > 0, "after redo, shape should reappear");
+    w.destroy();
+  });
+
+  it("five strokes accumulate even with pointerleave between each pair", () => {
+    const w = wirePainterApp();
+    for (let i = 0; i < 5; i++) {
+      dispatch(w.el, "pointerdown", 10 + i * 5, 10);
+      dispatch(w.el, "pointermove", 10 + i * 5, 80);
+      dispatch(w.el, "pointerleave", 10 + i * 5, 80);
+      dispatch(w.el, "pointerup",   10 + i * 5, 80);
+    }
+    assertEqual(w.history.size().past, 5, "all five strokes should be in history");
+    w.destroy();
+  });
+
+  it("pointercancel DOES cancel the stroke (it's the explicit cancel path)", () => {
+    const w = wirePainterApp();
+    const layer = w.stack.getActive()!;
+    dispatch(w.el, "pointerdown", 10, 10);
+    dispatch(w.el, "pointermove", 30, 30);
+    dispatch(w.el, "pointercancel", 30, 30);
+    assertEqual(w.history.size().past, 0, "pointercancel should not push a command");
+    // Subsequent pointerup with no down should be a no-op.
+    dispatch(w.el, "pointerup", 30, 30);
+    assertEqual(w.history.size().past, 0);
+    // The cancel path also restores from the shadow, so the layer is blank.
+    assertEqual(alphaAt(layer, 20, 20), 0);
+    w.destroy();
+  });
+
+  it("after a stroke commits, the layer pixels persist across re-renders", () => {
+    // Simulates the user drawing then triggering another render via, say, a
+    // brush size change or layer add. The previously committed pixels must
+    // not vanish.
+    const w = wirePainterApp();
+    const layer = w.stack.getActive()!;
+    dispatch(w.el, "pointerdown", 10, 10);
+    dispatch(w.el, "pointermove", 50, 50);
+    dispatch(w.el, "pointerup",   50, 50);
+    const before = alphaAt(layer, 30, 30);
+    assertTrue(before > 0);
+    // Force a stack change event to simulate "render again".
+    w.stack.markDirty({ x: 0, y: 0, w: 100, h: 100 });
+    const after = alphaAt(layer, 30, 30);
+    assertEqual(after, before, "pixels must survive a markDirty");
+    w.destroy();
+  });
+});
+
 describe("integration: every tool draws via dispatched events", () => {
   // Each tool gets routed through the live InputAdapter; the strict mock
   // canvas will throw on any bad drawImage signature, so a tool that "works
