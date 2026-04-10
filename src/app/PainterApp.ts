@@ -70,6 +70,8 @@ export class PainterApp {
             <label><input type="checkbox" id="mirror-x"> Mirror X</label>
             <label><input type="checkbox" id="mirror-y"> Mirror Y</label>
           </div>
+          <div id="menu-spacer"></div>
+          <button type="button" id="toggle-panel-btn" title="Show / hide right panel (P)">📑 Panel</button>
         </header>
         <aside id="tool-area"></aside>
         <main id="canvas-area">
@@ -156,6 +158,19 @@ export class PainterApp {
       onChromaKey: () => this.applyChromaKey(),
     });
     void this.projectPanel.render();
+
+    // Right-panel toggle in the menu bar.
+    const rightPanelEl = root.querySelector("#right-panel") as HTMLElement;
+    const togglePanelBtn = root.querySelector("#toggle-panel-btn") as HTMLButtonElement;
+    const rootEl = root.querySelector("#painter-root") as HTMLElement;
+    let rightPanelHidden = false;
+    togglePanelBtn.addEventListener("click", () => {
+      rightPanelHidden = !rightPanelHidden;
+      rightPanelEl.style.display = rightPanelHidden ? "none" : "";
+      rootEl.classList.toggle("right-hidden", rightPanelHidden);
+      // Force the canvas to refit since its column just expanded/collapsed.
+      requestAnimationFrame(() => fitCanvasToContainer());
+    });
 
     // Brush size slider
     const brushSize = root.querySelector("#brush-size") as HTMLInputElement;

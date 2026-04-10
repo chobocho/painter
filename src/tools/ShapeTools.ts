@@ -3,24 +3,23 @@
 // Implementation notes:
 // - All tools draw with the layer's 2D context primitives (lineTo, fillRect,
 //   ellipse, …). No tool reads or writes the full layer ImageData per pointer
-//   move — that was the source of the original lag (~10MB per move on a
+//   move — that was the source of the original lag (~10 MB per move on a
 //   1920x1280 layer).
 // - Each tool snapshots the active layer onto a temporary "shadow" offscreen
-//   canvas at pointerDown. Shape tools use the shadow as a clean slate to
-//   restore from on every move (rubber-banding). All tools sample
-//   `before` pixels from the shadow when committing the history command, so
-//   we never have to keep the original ImageData around in memory.
+//   canvas at pointerDown via the shared `snapshotLayer` helper. Shape tools
+//   use the shadow as a clean slate to restore from on every move
+//   (rubber-banding). All tools sample `before` pixels from the shadow when
+//   committing the history command, so we never have to keep the original
+//   ImageData around in memory.
 // - Each tool tracks the bounding rect of the affected pixels via point
 //   accumulation, so the committed PixelEditCommand only stores a small slice
 //   instead of the entire layer.
 
 import { Tool, ToolContext, ToolPointer } from "./Tool.js";
-import { Layer, CanvasLike, Ctx2D, CanvasFactory } from "../core/Layer.js";
+import { Layer, CanvasLike, Ctx2D } from "../core/Layer.js";
 import { Rect } from "../util/Rect.js";
-import { PixelEditCommand } from "../history/Commands.js";
 import { Color } from "../util/Color.js";
-
-interface Bbox { minX: number; minY: number; maxX: number; maxY: number; }
+import { Bbox, snapshotLayer, restoreFromShadow, commitStroke, newBbox, expandBbox } from "./StrokeUtil.js";
 
 interface DragState {
   layer: Layer;
@@ -29,55 +28,6 @@ interface DragState {
   start: { x: number; y: number };
   last: { x: number; y: number };
   bbox: Bbox;
-}
-
-function newBbox(x: number, y: number): Bbox {
-  return { minX: x, minY: y, maxX: x, maxY: y };
-}
-function expandBbox(b: Bbox, x: number, y: number): void {
-  if (x < b.minX) b.minX = x;
-  if (y < b.minY) b.minY = y;
-  if (x > b.maxX) b.maxX = x;
-  if (y > b.maxY) b.maxY = y;
-}
-function bboxToRect(b: Bbox, padding: number, w: number, h: number): Rect {
-  const x0 = Math.max(0, Math.floor(b.minX - padding));
-  const y0 = Math.max(0, Math.floor(b.minY - padding));
-  const x1 = Math.min(w, Math.ceil(b.maxX + padding + 1));
-  const y1 = Math.min(h, Math.ceil(b.maxY + padding + 1));
-  if (x1 <= x0 || y1 <= y0) return Rect.empty();
-  return Rect.create(x0, y0, x1 - x0, y1 - y0);
-}
-
-function snapshotLayer(layer: Layer, factory: CanvasFactory): { canvas: CanvasLike; ctx: Ctx2D } {
-  const c = factory(layer.width, layer.height);
-  const cx = c.getContext("2d");
-  if (!cx) throw new Error("snapshotLayer: no 2d context");
-  (cx as Ctx2D).drawImage(layer.getCanvas() as unknown);
-  return { canvas: c, ctx: cx as Ctx2D };
-}
-
-function restoreFromShadow(layer: Layer, shadow: CanvasLike): void {
-  const ctx = layer.getCtx();
-  ctx.clearRect(0, 0, layer.width, layer.height);
-  ctx.drawImage(shadow as unknown);
-}
-
-function commitFromShadow(toolCtx: ToolContext, state: DragState, label: string, padding: number): void {
-  const r = bboxToRect(state.bbox, padding, state.layer.width, state.layer.height);
-  if (Rect.isEmpty(r)) return;
-  const before = state.shadowCtx.getImageData(r.x, r.y, r.w, r.h);
-  const after = state.layer.getCtx().getImageData(r.x, r.y, r.w, r.h);
-  toolCtx.history.execute(
-    new PixelEditCommand({
-      layerId: state.layer.id,
-      rect: r,
-      before: { width: before.width, height: before.height, data: new Uint8ClampedArray(before.data) },
-      after: { width: after.width, height: after.height, data: new Uint8ClampedArray(after.data) },
-      label,
-    }),
-    { stack: toolCtx.stack }
-  );
 }
 
 function applyMirroredPoints(p: ToolPointer, layer: Layer, ctx: ToolContext, fn: (x: number, y: number) => void): void {
@@ -127,7 +77,8 @@ export class PencilTool implements Tool {
       bbox: newBbox(p.x, p.y),
     };
     this.drag = drag;
-    // Stamp a dot at start so single click leaves a mark.
+
+    // Stamp a dot at the start so a single click leaves a mark.
     applyMirroredPoints(p, layer, ctx, (x, y) => {
       lctx.beginPath();
       lctx.arc(x, y, Math.max(0.5, ctx.settings.brushSize / 2), 0, Math.PI * 2);
@@ -142,16 +93,12 @@ export class PencilTool implements Tool {
     const drag = this.drag;
     const lctx = drag.layer.getCtx();
     applyMirroredPoints(p, drag.layer, ctx, (x, y) => {
-      // Find the corresponding mirrored "last" point so each mirror line
-      // is drawn from its own previous position.
-      const dxLast = drag.last.x;
-      const dyLast = drag.last.y;
-      // Apply same axis flip to last point.
-      let lx = dxLast, ly = dyLast;
       const w = drag.layer.width;
       const h = drag.layer.height;
-      if (x !== p.x) lx = w - 1 - dxLast;
-      if (y !== p.y) ly = h - 1 - dyLast;
+      let lx = drag.last.x;
+      let ly = drag.last.y;
+      if (x !== p.x) lx = w - 1 - drag.last.x;
+      if (y !== p.y) ly = h - 1 - drag.last.y;
       lctx.beginPath();
       lctx.moveTo(lx, ly);
       lctx.lineTo(x, y);
@@ -166,7 +113,7 @@ export class PencilTool implements Tool {
   onPointerUp(_p: ToolPointer, ctx: ToolContext): void {
     if (!this.drag) return;
     this.drag.layer.getCtx().restore();
-    commitFromShadow(ctx, this.drag, this.eraseMode ? "Eraser" : "Pencil", ctx.settings.brushSize + 4);
+    commitStroke(ctx, this.drag.layer, this.drag.shadowCtx, this.drag.bbox, ctx.settings.brushSize + 4, this.eraseMode ? "Eraser" : "Pencil");
     this.drag = null;
   }
 
@@ -230,11 +177,10 @@ abstract class TwoPointShapeTool implements Tool {
 
   onPointerUp(p: ToolPointer, ctx: ToolContext): void {
     if (!this.drag) return;
-    // If down/up happened without a move, we still want to commit a small shape.
     if (this.drag.bbox.minX === this.drag.bbox.maxX && this.drag.bbox.minY === this.drag.bbox.maxY) {
       this.onPointerMove(p, ctx);
     }
-    commitFromShadow(ctx, this.drag, this.id, ctx.settings.brushSize + 4);
+    commitStroke(ctx, this.drag.layer, this.drag.shadowCtx, this.drag.bbox, ctx.settings.brushSize + 4, this.id);
     this.drag = null;
   }
 

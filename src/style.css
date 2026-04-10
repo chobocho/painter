@@ -89,6 +89,19 @@ html, body {
   white-space: nowrap;
 }
 
+#menu-spacer { flex: 1; }
+
+#toggle-panel-btn {
+  background: var(--panel2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+#toggle-panel-btn:hover { background: #3e3e48; }
+
 #tool-area {
   grid-area: tool;
   background: var(--panel);
@@ -173,12 +186,14 @@ html, body {
 
 .panel-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   font-weight: 600;
   margin-bottom: 6px;
   gap: 6px;
 }
+
+.panel-header .panel-title { flex: 1; }
 
 .panel-header button {
   background: var(--panel2);
@@ -189,6 +204,8 @@ html, body {
   border-radius: 3px;
   cursor: pointer;
 }
+
+.panel-collapse-btn { font-size: 10px; }
 
 .layer-list, .history-list, .project-list {
   display: flex;
@@ -256,6 +273,11 @@ html, body {
   color: #aaa;
 }
 
+/* When the user toggles the right panel off, the canvas column expands. */
+#painter-root.right-hidden {
+  grid-template-columns: 96px 1fr 0;
+}
+
 /* Folded narrow screens: collapse the right panel into an overlay. */
 @media (max-width: 1100px) {
   #painter-root {
@@ -272,5 +294,7 @@ html, body {
     bottom: 24px;
     width: 280px;
     z-index: 5;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.4);
   }
+  #painter-root.right-hidden #right-panel { display: none !important; }
 }

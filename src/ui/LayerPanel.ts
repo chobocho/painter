@@ -12,6 +12,8 @@ export interface LayerPanelHandlers {
 }
 
 export class LayerPanel {
+  private collapsed: boolean = false;
+
   constructor(
     private root: HTMLElement,
     private stack: LayerStack,
@@ -20,18 +22,44 @@ export class LayerPanel {
     stack.on("change", () => this.render());
   }
 
+  isCollapsed(): boolean { return this.collapsed; }
+
+  setCollapsed(v: boolean): void {
+    this.collapsed = v;
+    this.render();
+  }
+
+  toggle(): void {
+    this.setCollapsed(!this.collapsed);
+  }
+
   render(): void {
     this.root.innerHTML = "";
     const header = document.createElement("div");
     header.className = "panel-header";
-    header.textContent = "Layers";
+
+    const collapseBtn = document.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.className = "panel-collapse-btn";
+    collapseBtn.textContent = this.collapsed ? "▶" : "▼";
+    collapseBtn.title = this.collapsed ? "Expand layers" : "Collapse layers";
+    collapseBtn.addEventListener("click", () => this.toggle());
+    header.appendChild(collapseBtn);
+
+    const title = document.createElement("span");
+    title.className = "panel-title";
+    title.textContent = `Layers (${this.stack.size()})`;
+    header.appendChild(title);
+
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.textContent = "+";
     addBtn.title = "New layer";
-    addBtn.addEventListener("click", () => this.handlers.onAdd());
+    addBtn.addEventListener("click", (e) => { e.stopPropagation(); this.handlers.onAdd(); });
     header.appendChild(addBtn);
     this.root.appendChild(header);
+
+    if (this.collapsed) return;
 
     const list = document.createElement("div");
     list.className = "layer-list";

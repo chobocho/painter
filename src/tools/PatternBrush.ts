@@ -1,8 +1,8 @@
 import { Tool, ToolContext, ToolPointer } from "./Tool.js";
-import { Layer, CanvasLike, Ctx2D, CanvasFactory } from "../core/Layer.js";
+import { Layer, CanvasLike, Ctx2D } from "../core/Layer.js";
 import { Rect } from "../util/Rect.js";
-import { PixelEditCommand } from "../history/Commands.js";
-import { Color, RGBA } from "../util/Color.js";
+import { RGBA } from "../util/Color.js";
+import { snapshotLayer, restoreFromShadow, commitStroke, newBbox, expandBbox, Bbox } from "./StrokeUtil.js";
 
 interface PatternMask {
   width: number;
@@ -45,21 +45,9 @@ interface DragState {
   layer: Layer;
   shadow: CanvasLike;
   shadowCtx: Ctx2D;
-  bbox: { minX: number; minY: number; maxX: number; maxY: number };
+  bbox: Bbox;
 }
 
-function snapshotLayer(layer: Layer, factory: CanvasFactory): { canvas: CanvasLike; ctx: Ctx2D } {
-  const c = factory(layer.width, layer.height);
-  const cx = c.getContext("2d");
-  if (!cx) throw new Error("snapshotLayer: no 2d context");
-  (cx as Ctx2D).drawImage(layer.getCanvas() as unknown);
-  return { canvas: c, ctx: cx as Ctx2D };
-}
-
-/**
- * Pencil-like tool that stamps a tileable pattern instead of a solid color.
- * Operates on the small region under each stamp, not the whole layer.
- */
 export class PatternBrush implements Tool {
   id = "pattern";
   cursor = "crosshair";
@@ -73,7 +61,7 @@ export class PatternBrush implements Tool {
       layer,
       shadow: shadow.canvas,
       shadowCtx: shadow.ctx,
-      bbox: { minX: p.x, minY: p.y, maxX: p.x, maxY: p.y },
+      bbox: newBbox(p.x, p.y),
     };
     this.stamp(p, ctx);
   }
@@ -84,34 +72,13 @@ export class PatternBrush implements Tool {
 
   onPointerUp(_p: ToolPointer, ctx: ToolContext): void {
     if (!this.drag) return;
-    const drag = this.drag;
-    const padding = Math.max(2, ctx.settings.brushSize) + 2;
-    const x0 = Math.max(0, Math.floor(drag.bbox.minX - padding));
-    const y0 = Math.max(0, Math.floor(drag.bbox.minY - padding));
-    const x1 = Math.min(drag.layer.width, Math.ceil(drag.bbox.maxX + padding + 1));
-    const y1 = Math.min(drag.layer.height, Math.ceil(drag.bbox.maxY + padding + 1));
-    if (x1 <= x0 || y1 <= y0) { this.drag = null; return; }
-    const r = Rect.create(x0, y0, x1 - x0, y1 - y0);
-    const before = drag.shadowCtx.getImageData(r.x, r.y, r.w, r.h);
-    const after = drag.layer.getCtx().getImageData(r.x, r.y, r.w, r.h);
-    ctx.history.execute(
-      new PixelEditCommand({
-        layerId: drag.layer.id,
-        rect: r,
-        before: { width: before.width, height: before.height, data: new Uint8ClampedArray(before.data) },
-        after: { width: after.width, height: after.height, data: new Uint8ClampedArray(after.data) },
-        label: "Pattern",
-      }),
-      { stack: ctx.stack }
-    );
+    commitStroke(ctx, this.drag.layer, this.drag.shadowCtx, this.drag.bbox, ctx.settings.brushSize + 2, "Pattern");
     this.drag = null;
   }
 
   onPointerCancel(ctx: ToolContext): void {
     if (this.drag) {
-      const lctx = this.drag.layer.getCtx();
-      lctx.clearRect(0, 0, this.drag.layer.width, this.drag.layer.height);
-      lctx.drawImage(this.drag.shadow as unknown);
+      restoreFromShadow(this.drag.layer, this.drag.shadow);
       ctx.stack.markDirty(Rect.create(0, 0, this.drag.layer.width, this.drag.layer.height));
     }
     this.drag = null;
@@ -149,13 +116,9 @@ export class PatternBrush implements Tool {
       }
     }
     drag.layer.getCtx().putImageData(region, x0, y0);
-    if (x0 < drag.bbox.minX) drag.bbox.minX = x0;
-    if (y0 < drag.bbox.minY) drag.bbox.minY = y0;
-    if (x0 + w > drag.bbox.maxX) drag.bbox.maxX = x0 + w;
-    if (y0 + h > drag.bbox.maxY) drag.bbox.maxY = y0 + h;
+    expandBbox(drag.bbox, x0, y0);
+    expandBbox(drag.bbox, x0 + w - 1, y0 + h - 1);
     ctx.stack.markDirty(Rect.create(x0, y0, w, h));
-    // Suppress unused-import warning for Color when settings.color is RGBA already.
-    void Color;
   }
 }
 

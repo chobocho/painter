@@ -121,13 +121,25 @@ export class MockCanvasRenderingContext2D {
   }
 
   drawImage(src: MockHTMLCanvasElement, ...rest: number[]): void {
+    // Strict: matches the real CanvasRenderingContext2D contract. The legal
+    // forms are 3, 5, or 9 total arguments (image + 2 / 4 / 8 numbers).
+    // Anything else throws — exactly like a real browser does.
+    if (rest.length !== 2 && rest.length !== 4 && rest.length !== 8) {
+      throw new TypeError(
+        `MockCanvas drawImage: expected 2, 4, or 8 numeric args after the source, got ${rest.length}. ` +
+        `(Real browsers throw the same error: this is on purpose to keep tests honest.)`
+      );
+    }
+    if (!src || typeof src.getContext !== "function") {
+      throw new TypeError("MockCanvas drawImage: source is not a canvas-like object");
+    }
     if (rest.length === 2) {
       const [dx, dy] = rest as [number, number];
       this._blit(src, 0, 0, src.width, src.height, dx, dy, src.width, src.height);
     } else if (rest.length === 4) {
       const [dx, dy, dw, dh] = rest as [number, number, number, number];
       this._blit(src, 0, 0, src.width, src.height, dx, dy, dw, dh);
-    } else if (rest.length === 8) {
+    } else {
       const [sx, sy, sw, sh, dx, dy, dw, dh] = rest as [number, number, number, number, number, number, number, number];
       this._blit(src, sx, sy, sw, sh, dx, dy, dw, dh);
     }

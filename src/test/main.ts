@@ -13,6 +13,8 @@ import "./tools.test.js";
 import "./storage.test.js";
 import "./input.test.js";
 import "./regression.test.js";
+import "./integration.test.js";
+import "./ui.test.js";
 
 import { run } from "./runner.js";
 run();
