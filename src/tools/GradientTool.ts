@@ -80,19 +80,25 @@ export class GradientTool implements Tool {
     if (len2 < 1) return;
     const lctx = layer.getCtx();
     const region = lctx.getImageData(0, 0, layer.width, layer.height);
+    // Deluxe Paint–style gradient fill: only repaint pixels that already
+    // have content on the layer. Empty pixels are left alone, so the
+    // gradient is clipped to the existing shape outline / fill rather
+    // than blanket-filling the whole canvas.
     for (let y = 0; y < layer.height; y++) {
       for (let x = 0; x < layer.width; x++) {
+        const i = (y * layer.width + x) * 4;
+        if (region.data[i + 3] === 0) continue;
         const px = x - drag.start.x;
         const py = y - drag.start.y;
         let t = (px * dx + py * dy) / len2;
         if (t < 0) t = 0;
         if (t > 1) t = 1;
         const c = sampleGradient(ctx.settings.gradientStops, t);
-        const i = (y * layer.width + x) * 4;
         region.data[i] = c.r;
         region.data[i + 1] = c.g;
         region.data[i + 2] = c.b;
-        region.data[i + 3] = c.a;
+        // Preserve the existing alpha so anti-aliased edges keep their
+        // softness and the original shape outline is unchanged.
       }
     }
     lctx.putImageData(region, 0, 0);

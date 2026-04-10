@@ -290,8 +290,12 @@ describe("FillBucketTool", () => {
 });
 
 describe("GradientTool", () => {
-  it("two-stop gradient produces interpolated edges and one command", () => {
+  it("two-stop gradient produces interpolated edges across an existing fill", () => {
+    // The new (round-5) semantics: gradient only repaints existing pixels.
+    // Pre-fill the entire layer so the gradient has something to clip against.
     const { ctx, history, layer } = bootstrap();
+    layer.getCtx().fillStyle = "rgba(255,255,255,1)";
+    layer.getCtx().fillRect(0, 0, 32, 32);
     ctx.settings.gradientStops = [
       { stop: 0, color: { r: 0, g: 0, b: 0, a: 255 } },
       { stop: 1, color: { r: 255, g: 255, b: 255, a: 255 } },

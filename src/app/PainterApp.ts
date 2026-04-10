@@ -64,6 +64,10 @@ export class PainterApp {
       <div id="painter-root">
         <header id="menu-bar">
           <button type="button" id="toggle-panel-btn" title="우측 패널 숨기기/보기">📑 패널</button>
+          <div id="undo-redo-group">
+            <button type="button" id="menu-undo-btn" title="실행 취소 (Ctrl+Z)">↶</button>
+            <button type="button" id="menu-redo-btn" title="다시 실행 (Ctrl+Y)">↷</button>
+          </div>
           <div id="palette-area"></div>
           <div id="brush-controls">
             <label>굵기 <input type="range" id="brush-size" min="1" max="64" value="${this.settings.brushSize}"></label>
@@ -126,6 +130,24 @@ export class PainterApp {
 
     this.palette = new Palette(root.querySelector("#palette-area") as HTMLElement, (c) => { this.settings.color = c; });
     this.palette.render();
+
+    // Menu-bar undo / redo buttons.
+    const menuUndoBtn = root.querySelector("#menu-undo-btn") as HTMLButtonElement;
+    const menuRedoBtn = root.querySelector("#menu-redo-btn") as HTMLButtonElement;
+    const refreshUndoRedo = () => {
+      menuUndoBtn.disabled = !this.history.canUndo();
+      menuRedoBtn.disabled = !this.history.canRedo();
+    };
+    menuUndoBtn.addEventListener("click", () => {
+      this.history.undo({ stack: this.stack });
+      this.scheduleRender();
+    });
+    menuRedoBtn.addEventListener("click", () => {
+      this.history.redo({ stack: this.stack });
+      this.scheduleRender();
+    });
+    this.history.on("change", refreshUndoRedo);
+    refreshUndoRedo();
 
     this.layerPanel = new LayerPanel(root.querySelector("#layer-panel") as HTMLElement, this.stack, {
       onAdd: () => this.addLayer(),
@@ -270,6 +292,13 @@ export class PainterApp {
       history: this.history,
       settings: this.settings,
       previewLayer: this.previewLayer,
+      onColorPicked: (c) => {
+        // The eyedropper (and any future color-changing tool) hits this so
+        // the Palette UI updates immediately. settings.color is also set
+        // by the tool itself; assigning here keeps the two in sync.
+        this.settings.color = c;
+        if (this.palette) this.palette.set(c);
+      },
     };
   }
 

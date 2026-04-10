@@ -58,6 +58,12 @@ export interface ToolContext {
   previewLayer: Layer;
   /** Composite snapshot used by eyedropper. Optional. */
   composite?: Layer;
+  /**
+   * Callback fired by tools that change the active color (e.g. eyedropper).
+   * The PainterApp wires this to the Palette so the swatch UI updates and
+   * the user gets visual feedback that their click did something.
+   */
+  onColorPicked?: (c: RGBA) => void;
 }
 
 export interface Tool {

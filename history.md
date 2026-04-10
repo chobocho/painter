@@ -538,3 +538,163 @@ not ok - five strokes accumulate even with pointerleave between each pair
 
 다음 세션은 위 회귀 테스트 8개를 먼저 실행해 보고 (`node dist/src/test/main.js | grep round`) `# pass 113`을 확인한 뒤 작업 시작 권장.
 
+---
+
+## 2026-04-10 — Round 5: 히스토리 버튼 미동작, 그라디언트 전체 덮음, 스포이드 동작 안 함, 도구 잘림
+
+### 사용자 보고
+
+1. 테스트 케이스를 더 강화해야 한다.
+2. 히스토리 버튼이 동작도 안 한다.
+3. 그라디언트가 항상 전체 이미지를 덮는다 — 도형 안에만 적용되어야 할 것 같다.
+4. eyedropper(스포이드) 기능이 뭔지 모르겠고 동작도 안 하는 것 같다.
+5. 스무드(스머지) 아래 아이콘이 잘린다.
+6. README.md, history.md 한글로 업데이트.
+
+### Round 5 · 코디네이터 사전 점검
+
+- `git push --dry-run origin master` 정상.
+- master 113/113 통과, `BUILD OK` 상태.
+- 보고된 결함 4개를 코드에서 직접 추적.
+
+### Round 5 · 진단
+
+#### 보고 2 · 히스토리 버튼 미동작
+
+`src/ui/HistoryPanel.ts` 확인. 헤더에 `↶`(undo), `↷`(redo) 버튼이 있긴 한데:
+
+- `header.textContent = "History"` 이후에 `appendChild(undoBtn)` — 영문 라벨, 익명 텍스트 노드 + 두 버튼이 flex item으로 나열됨.
+- `.panel-header button { width: 24px; height: 24px; }` — **너무 작음**. 글리프가 잘 안 보이고 터치가 안 잡힘.
+- `LayerPanel`은 round 3에서 `collapsed` 토글을 추가했지만 `HistoryPanel`은 그대로 — 일관성 없음.
+- 메뉴 바에는 명시적 undo/redo 버튼이 없어서 단축키(`Ctrl+Z`)를 모르는 사용자는 갈 곳이 없음.
+
+사용자가 "동작도 안 한다"고 표현한 건 핸들러 자체의 버그가 아니라 **버튼이 사실상 못 누르는 크기**라서 그렇게 보였을 가능성이 큼.
+
+#### 보고 3 · 그라디언트가 전체 이미지를 덮음
+
+`src/tools/GradientTool.ts:preview()`:
+
+```ts
+for (let y = 0; y < layer.height; y++) {
+  for (let x = 0; x < layer.width; x++) {
+    // ...
+    region.data[i]   = c.r;
+    region.data[i+1] = c.g;
+    region.data[i+2] = c.b;
+    region.data[i+3] = c.a;
+  }
+}
+```
+
+레이어 모든 픽셀을 무조건 그라디언트 색으로 덮어씀. 사용자가 원하는 동작은 디럭스 페인트 전형 — **이미 그려진 도형 안만** 그라디언트로 채우기. `region.data[i+3] === 0`인 픽셀은 건너뛰면 됨. 추가로 alpha는 보존해서 안티에일리어스 가장자리도 부드럽게 유지.
+
+#### 보고 4 · 스포이드 동작 안 함
+
+`src/tools/EyedropperTool.ts`:
+
+```ts
+const source = ctx.composite ?? ctx.stack.getActive();
+const buf = source.getPixels(0, 0, source.width, source.height);
+const c = getPixel(buf, Math.floor(p.x), Math.floor(p.y));
+if (c.a > 0) {
+  ctx.settings.color = c;
+}
+```
+
+세 가지 결함:
+- **전체 레이어를 매번 `getPixels`로 읽음** — 큰 프로젝트에서 느림.
+- **활성 레이어만 봄** — `ctx.composite`는 PainterApp이 채우지 않으므로 항상 `null`. 결과적으로 사용자가 보고 있는 합성 색이 아니라 활성 레이어 픽셀만 추출.
+- **시각적 피드백이 전혀 없음** — `ctx.settings.color`만 바꾸고 끝. 좌측 `Palette` UI는 별도로 관리되는 색이라 갱신되지 않음. 사용자는 클릭이 동작했는지 알 수 없음 → "동작 안 함"으로 인식.
+
+#### 보고 5 · 스무드 아래 도구 잘림
+
+`#tool-area`는 폭 96px, vertical flex column. 도구가 19개. 각 버튼이 약 50px 높이 (icon 18px + label 9px + padding) → 총 ~950px. 폴드7 펼친 상태든 작은 데스크톱 창이든 마지막 도구(`pattern`)가 잘림. `overflow-y: auto`라 스크롤은 가능하지만 사용자가 모름. **2열 그리드**가 정답.
+
+### Round 5 · 기획 에이전트
+
+#### 그라디언트 (보고 3)
+
+`region.data[i + 3] === 0` 픽셀은 `continue`. 알파는 보존(`region.data[i + 3]` 미수정). 결과: 도형 안만 그라디언트, 가장자리 안티에일리어스 그대로.
+
+#### 스포이드 (보고 4)
+
+- `ToolContext`에 `onColorPicked: (c: RGBA) => void` 콜백 추가.
+- `EyedropperTool`은 1×1 임시 캔버스에 모든 가시 레이어를 합성한 뒤 `getImageData(0,0,1,1)`로 한 픽셀만 읽음 (성능 + 정확성).
+- 합성이 transparent면 활성 레이어로 fallback.
+- 콜백 호출 + `settings.color` 갱신.
+- `PainterApp.toolContext()`가 콜백에서 `palette.set(c)`를 호출 → 좌측 컬러 피커 UI 즉시 갱신.
+
+#### 히스토리 패널 (보고 2)
+
+- `HistoryPanel`을 `LayerPanel` 구조에 맞춰 재작성: `collapsed` 상태, `▼/▶` 토글 버튼, `.panel-title` (`히스토리 (n)`), 큰 ↶/↷ 버튼.
+- `.panel-header button` CSS를 `min-width: 28px; height: 28px; font-size: 14px`로 키움.
+- `.history-undo-btn`, `.history-redo-btn`는 `font-size: 18px !important; font-weight: 700`로 더 잘 보이게.
+- 메뉴 바에 `#undo-redo-group` 추가: 34×30 px 두 버튼 ↶/↷. `history.on("change")`가 `disabled` 상태 동기화.
+- 단축키, 히스토리 패널, 메뉴 바 — 세 곳에서 undo/redo가 가능.
+
+#### 도구 패널 (보고 5)
+
+- `#painter-root grid-template-columns`: `96px → 144px` (도구 패널 폭).
+- `#tool-area`: `display: grid; grid-template-columns: 1fr 1fr; gap: 3px; align-content: start`.
+- `.tool-btn`: padding/font 축소 (`font-size: 8px`, icon 14px, label 7px, `min-height: 36px`).
+- 19개 도구 → 10행 × 2열 = 약 380px. 폴드7 펼침/접힘, 데스크톱 모두에서 충분.
+- `right-hidden` 와 모바일 미디어 쿼리도 새 폭에 맞춰 갱신.
+
+#### 회귀 테스트
+
+`test/round5.test.ts` 신규 파일. 17개 케이스:
+- GradientTool: 빈 픽셀에 안 칠해짐 / 빈 레이어에 효과 없음 / 알파 보존
+- EyedropperTool: 콜백 발화 / `settings.color` 갱신 / 합성 레이어 검증 / 히스토리 미발생 / 영역 밖 무시
+- HistoryPanel: 시작 펼침 / `toggle()` 동작 / `history.execute` 후에도 살아있음 / 토글 상태 보존
+- ToolRegistry: 19개 이상 등록 / `smudge` `pattern` 둘 다 등록
+
+#### 문서화
+
+- `README.md`에 그라디언트/스포이드 동작 메모 + 메뉴 바/패널 토글 설명 추가, 테스트 수 113→127로 갱신.
+- `history.md` Round 5 한글 추가.
+
+### Round 5 · 개발 에이전트
+
+수정한 파일:
+
+- `src/tools/Tool.ts` — `ToolContext.onColorPicked?: (c: RGBA) => void` 추가.
+- `src/tools/EyedropperTool.ts` — 1×1 합성 캔버스 + 콜백 + 활성 레이어 fallback.
+- `src/tools/GradientTool.ts` — `region.data[i+3] === 0` 픽셀 skip + 알파 보존 + 주석.
+- `src/ui/HistoryPanel.ts` — `LayerPanel` 구조에 맞춰 재작성. `collapsed` 토글, `panel-title`, 큰 undo/redo 버튼.
+- `src/app/PainterApp.ts`:
+  - 메뉴 바 HTML에 `#undo-redo-group` 추가.
+  - `boot()`에서 `menuUndoBtn`/`menuRedoBtn` 핸들러 + `history.on("change")`가 `disabled` 동기화.
+  - `toolContext()`에 `onColorPicked` 콜백 — `settings.color` 갱신 + `palette.set(c)`.
+- `src/style.css`:
+  - `#painter-root grid-template-columns: 144px 1fr 320px` (+ `.right-hidden` 도 144).
+  - `#tool-area` grid 2열, 도구 폰트/패딩 축소.
+  - `#undo-redo-group` 스타일.
+  - `.panel-header button` 28×28+font-size 14, `.history-undo-btn`/`.history-redo-btn` 18px 700.
+  - 모바일 미디어 쿼리 컬럼 폭 120px.
+- `src/test/round5.test.ts` — 17개 신규 회귀 케이스.
+- `src/test/main.ts` — `round5.test.js` import.
+- `src/test/tools.test.ts` — 기존 GradientTool 테스트가 옛 "전체 덮음" 동작을 가정했으므로, 사전에 흰색으로 채운 뒤 그 위에 그라디언트를 적용하도록 수정 (새 계약과 일치).
+- `README.md` — 도구 메모, 토글 설명, 테스트 수 갱신.
+
+### Round 5 · 검증 에이전트
+
+첫 실행: **126/127 통과**. 한 실패는 기존 `tools.test.ts`의 옛 GradientTool 테스트 — 옛 "전체 덮음" 동작을 가정한 어설션이 새 "도형 안만" 동작과 충돌. 사전 페인트 단계를 추가해 새 계약에 맞게 갱신. 재실행: **127/127 통과 (~194ms)**.
+
+### Round 5 · 빌드 / 배포
+
+`./build.sh` 정상: 127/127 + `BUILD OK`.
+
+### Round 5 · 코디네이터 인계
+
+이번 라운드 user-visible 변경:
+
+- **그라디언트가 디럭스 페인트처럼 도형 안만 칠합니다.** 빈 레이어에 그라디언트 적용하면 아무것도 안 됨 (의도된 동작). 먼저 도형 그리거나 fill bucket으로 영역 채우고 그 안에 그라디언트.
+- **스포이드가 작동하고 시각적 피드백을 줍니다.** 클릭하면 좌측 컬러 피커가 즉시 추출한 색으로 갱신. 모든 가시 레이어 합성한 색을 읽으므로 사용자가 보는 그대로.
+- **히스토리 버튼이 명확하게 보이고 동작**: HistoryPanel 헤더 (▼ 토글, 큰 ↶/↷, `히스토리 (n)` 라벨), 메뉴 바의 큰 ↶/↷ 그룹, 단축키 — 세 곳 모두 가능.
+- **도구가 2열로 배치되어 19개 모두 한눈에 보입니다.** Smudge 아래 Pattern도 잘리지 않음.
+- 테스트 113 → 127 (+14). 빌드 374K.
+
+가장 중요한 교훈: **사용자 보고에 "동작 안 한다"고 하면 핸들러 버그뿐 아니라 "버튼이 사실상 못 누르는 크기/잘림/숨어있음"을 항상 함께 의심**할 것. UI 버튼은 충분히 크고 눈에 띄어야 한다.
+
+다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 127` 확인 후 작업 시작 권장.
+
