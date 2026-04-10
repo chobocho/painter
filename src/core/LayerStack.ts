@@ -11,8 +11,8 @@ export class LayerStack extends Emitter<StackEvents> {
   private layers: Layer[] = [];
   private activeId: string | null = null;
   readonly factory: CanvasFactory;
-  readonly width: number;
-  readonly height: number;
+  width: number;
+  height: number;
   private dirty: Rect = Rect.empty();
 
   constructor(width: number, height: number, factory: CanvasFactory) {
@@ -20,6 +20,20 @@ export class LayerStack extends Emitter<StackEvents> {
     this.width = width;
     this.height = height;
     this.factory = factory;
+  }
+
+  /**
+   * Replace all layers + size from a list of snapshots without breaking
+   * existing event subscribers. Used by `applyState` after loading a project
+   * so the LayerPanel/AutoSaver/etc. listeners stay alive.
+   */
+  reset(snapshots: LayerSnapshot[], width: number, height: number, activeId: string | null): void {
+    this.layers = snapshots.map((s) => Layer.deserialize(s, this.factory));
+    this.width = width;
+    this.height = height;
+    this.activeId = activeId ?? (this.layers[0]?.id ?? null);
+    this.dirty = Rect.create(0, 0, width, height);
+    this.emit("change", { reason: "reset" });
   }
 
   add(layer: Layer, index?: number): void {

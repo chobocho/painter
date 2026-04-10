@@ -208,7 +208,11 @@ export class PainterApp {
   private newProjectInternal(w: number, h: number): void {
     this.projectWidth = w;
     this.projectHeight = h;
-    this.stack = new LayerStack(w, h, realCanvasFactory);
+    if (!this.stack) {
+      this.stack = new LayerStack(w, h, realCanvasFactory);
+    } else {
+      this.stack.reset([], w, h, null);
+    }
     const base = new Layer({ name: "Background", width: w, height: h, factory: realCanvasFactory });
     base.getCtx().fillStyle = "#ffffff";
     base.getCtx().fillRect(0, 0, w, h);
@@ -216,7 +220,11 @@ export class PainterApp {
     const draw = new Layer({ name: "Layer 1", width: w, height: h, factory: realCanvasFactory });
     this.stack.add(draw);
     this.stack.setActive(draw.id);
-    this.history = new CommandHistory();
+    if (!this.history) {
+      this.history = new CommandHistory();
+    } else {
+      this.history.clear();
+    }
     this.previewLayer = new Layer({ name: "Preview", width: w, height: h, factory: realCanvasFactory });
   }
 
@@ -354,11 +362,12 @@ export class PainterApp {
     this.createdAt = state.meta.createdAt;
     this.projectWidth = state.meta.width;
     this.projectHeight = state.meta.height;
-    const { stack, history } = ProjectCodec.applyState(state, realCanvasFactory);
-    this.stack = stack;
-    this.history = history;
-    this.settings = state.settings;
+    // Mutate in place so existing listeners on stack/history stay alive.
+    this.stack.reset(state.layers, state.meta.width, state.meta.height, state.activeLayerId);
+    this.history.replace(state.history);
+    Object.assign(this.settings, state.settings);
     this.previewLayer = new Layer({ name: "Preview", width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
+    if (this.displayCanvas) this.displayCanvas.setProjectSize(this.projectWidth, this.projectHeight);
     this.scheduleRender();
   }
 

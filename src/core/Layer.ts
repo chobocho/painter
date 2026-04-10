@@ -27,9 +27,13 @@ export interface Ctx2D {
   fillStyle: string;
   strokeStyle: string;
   lineWidth: number;
+  lineCap: string;
+  lineJoin: string;
   globalAlpha: number;
   globalCompositeOperation: string;
   imageSmoothingEnabled: boolean;
+  save(): void;
+  restore(): void;
   clearRect(x: number, y: number, w: number, h: number): void;
   fillRect(x: number, y: number, w: number, h: number): void;
   strokeRect(x: number, y: number, w: number, h: number): void;
@@ -37,8 +41,8 @@ export interface Ctx2D {
   closePath(): void;
   moveTo(x: number, y: number): void;
   lineTo(x: number, y: number): void;
-  arc(x: number, y: number, r: number, s: number, e: number): void;
-  ellipse(x: number, y: number, a: number, b: number, r: number, s: number, e: number): void;
+  arc(x: number, y: number, r: number, s: number, e: number, ccw?: boolean): void;
+  ellipse(x: number, y: number, a: number, b: number, r: number, s: number, e: number, ccw?: boolean): void;
   stroke(): void;
   fill(): void;
   drawImage(...args: unknown[]): void;

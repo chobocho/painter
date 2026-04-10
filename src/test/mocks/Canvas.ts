@@ -1,6 +1,8 @@
-// Minimal headless canvas/context implementation for Node tests.
-// Backed by a Uint8ClampedArray of RGBA pixels. Implements just the surface
-// area used by tools, layers, and the compositor.
+// Headless canvas/context for Node tests. Backed by a Uint8ClampedArray of
+// RGBA pixels. Implements just enough surface area for tools, layers, and the
+// compositor — including line/circle stamping, lineWidth, destination-out,
+// drawImage between canvases, and getImageData/putImageData of arbitrary
+// regions.
 
 export interface MockImageData {
   width: number;
@@ -8,67 +10,115 @@ export interface MockImageData {
   data: Uint8ClampedArray;
 }
 
+type PathOp =
+  | { type: "M"; x: number; y: number }
+  | { type: "L"; x: number; y: number }
+  | { type: "A"; x: number; y: number; r: number }
+  | { type: "E"; x: number; y: number; rx: number; ry: number };
+
 export class MockCanvasRenderingContext2D {
   canvas: MockHTMLCanvasElement;
   fillStyle: string = "#000000";
   strokeStyle: string = "#000000";
   lineWidth: number = 1;
+  lineCap: string = "butt";
+  lineJoin: string = "miter";
   globalAlpha: number = 1;
   globalCompositeOperation: string = "source-over";
   imageSmoothingEnabled: boolean = true;
-  lineCap: string = "butt";
-  lineJoin: string = "miter";
 
-  private _path: { x: number; y: number; type: "M" | "L" }[] = [];
+  private _path: PathOp[] = [];
+  private _stateStack: Partial<MockCanvasRenderingContext2D>[] = [];
 
   constructor(canvas: MockHTMLCanvasElement) {
     this.canvas = canvas;
   }
 
+  save(): void {
+    this._stateStack.push({
+      fillStyle: this.fillStyle,
+      strokeStyle: this.strokeStyle,
+      lineWidth: this.lineWidth,
+      lineCap: this.lineCap,
+      lineJoin: this.lineJoin,
+      globalAlpha: this.globalAlpha,
+      globalCompositeOperation: this.globalCompositeOperation,
+    });
+  }
+  restore(): void {
+    const s = this._stateStack.pop();
+    if (!s) return;
+    Object.assign(this, s);
+  }
+
   setTransform(_a: number, _b: number, _c: number, _d: number, _e: number, _f: number): void {}
   scale(_x: number, _y: number): void {}
   translate(_x: number, _y: number): void {}
-  save(): void {}
-  restore(): void {}
 
   clearRect(x: number, y: number, w: number, h: number): void {
-    this._fillRectInternal(x, y, w, h, [0, 0, 0, 0]);
+    this._fillRectInternal(x, y, w, h, [0, 0, 0, 0], true);
   }
 
   fillRect(x: number, y: number, w: number, h: number): void {
     const c = parseColor(this.fillStyle);
-    c[3] = Math.round(c[3] * this.globalAlpha);
-    this._fillRectInternal(x, y, w, h, c);
+    this._fillRectInternal(x, y, w, h, c, false);
   }
 
   strokeRect(x: number, y: number, w: number, h: number): void {
     const c = parseColor(this.strokeStyle);
-    c[3] = Math.round(c[3] * this.globalAlpha);
-    // 1px outline only
-    this._fillRectInternal(x, y, w, 1, c);
-    this._fillRectInternal(x, y + h - 1, w, 1, c);
-    this._fillRectInternal(x, y, 1, h, c);
-    this._fillRectInternal(x + w - 1, y, 1, h, c);
+    const lw = Math.max(1, Math.floor(this.lineWidth));
+    // Treat the rect as having corners at (x,y) and (x+w,y+h) inclusive,
+    // matching how real canvas strokes a 1px line that straddles the edge.
+    this._fillRectInternal(x, y, w + lw, lw, c, false);
+    this._fillRectInternal(x, y + h, w + lw, lw, c, false);
+    this._fillRectInternal(x, y, lw, h + lw, c, false);
+    this._fillRectInternal(x + w, y, lw, h + lw, c, false);
   }
 
   beginPath(): void { this._path = []; }
   closePath(): void {}
-  moveTo(x: number, y: number): void { this._path.push({ x, y, type: "M" }); }
-  lineTo(x: number, y: number): void { this._path.push({ x, y, type: "L" }); }
-  arc(_x: number, _y: number, _r: number, _s: number, _e: number): void {}
-  ellipse(_x: number, _y: number, _a: number, _b: number, _r: number, _s: number, _e: number): void {}
+  moveTo(x: number, y: number): void { this._path.push({ type: "M", x, y }); }
+  lineTo(x: number, y: number): void { this._path.push({ type: "L", x, y }); }
+  arc(x: number, y: number, r: number, _s: number, _e: number, _ccw?: boolean): void {
+    this._path.push({ type: "A", x, y, r });
+  }
+  ellipse(x: number, y: number, rx: number, ry: number, _r: number, _s: number, _e: number, _ccw?: boolean): void {
+    this._path.push({ type: "E", x, y, rx, ry });
+  }
 
   stroke(): void {
     const c = parseColor(this.strokeStyle);
-    c[3] = Math.round(c[3] * this.globalAlpha);
-    for (let i = 1; i < this._path.length; i++) {
-      const a = this._path[i - 1]!;
-      const b = this._path[i]!;
-      this._line(a.x, a.y, b.x, b.y, c);
+    const w = this.lineWidth;
+    let last: { x: number; y: number } | null = null;
+    for (const op of this._path) {
+      if (op.type === "M") {
+        last = { x: op.x, y: op.y };
+      } else if (op.type === "L") {
+        if (last) this._line(last.x, last.y, op.x, op.y, c, w);
+        last = { x: op.x, y: op.y };
+      } else if (op.type === "A") {
+        this._strokeCircle(op.x, op.y, op.r, c, w);
+      } else if (op.type === "E") {
+        this._strokeEllipse(op.x, op.y, op.rx, op.ry, c, w);
+      }
     }
   }
 
-  fill(): void {}
+  fill(): void {
+    const c = parseColor(this.fillStyle);
+    for (const op of this._path) {
+      if (op.type === "A") {
+        this._fillCircle(op.x, op.y, op.r, c);
+      } else if (op.type === "E") {
+        this._fillEllipse(op.x, op.y, op.rx, op.ry, c);
+      }
+    }
+    // Triangle / polygon fill: if path is M L L close, fill the triangle.
+    const lines = this._path.filter((p) => p.type === "M" || p.type === "L") as ({ type: "M" | "L"; x: number; y: number }[]);
+    if (lines.length >= 3 && lines[0]!.type === "M") {
+      this._fillPolygon(lines.map((p) => ({ x: p.x, y: p.y })), c);
+    }
+  }
 
   drawImage(src: MockHTMLCanvasElement, ...rest: number[]): void {
     if (rest.length === 2) {
@@ -121,32 +171,68 @@ export class MockCanvasRenderingContext2D {
     return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
   }
 
-  private _fillRectInternal(x: number, y: number, w: number, h: number, rgba: number[]): void {
-    const x0 = Math.max(0, Math.floor(x));
-    const y0 = Math.max(0, Math.floor(y));
-    const x1 = Math.min(this.canvas.width, Math.floor(x + w));
-    const y1 = Math.min(this.canvas.height, Math.floor(y + h));
+  // ---- internal raster helpers --------------------------------------------
+
+  private _putPixel(x: number, y: number, rgba: number[], isClear: boolean): void {
+    if (x < 0 || y < 0 || x >= this.canvas.width || y >= this.canvas.height) return;
+    const idx = (y * this.canvas.width + x) * 4;
+    if (isClear) {
+      this.canvas.pixels[idx] = 0;
+      this.canvas.pixels[idx + 1] = 0;
+      this.canvas.pixels[idx + 2] = 0;
+      this.canvas.pixels[idx + 3] = 0;
+      return;
+    }
+    if (this.globalCompositeOperation === "destination-out") {
+      const sa = (rgba[3]! / 255) * this.globalAlpha;
+      this.canvas.pixels[idx + 3] = Math.round(this.canvas.pixels[idx + 3]! * (1 - sa));
+      return;
+    }
+    // source-over (and any other op falls through to plain replace).
+    const sa = (rgba[3]! / 255) * this.globalAlpha;
+    if (sa >= 1) {
+      this.canvas.pixels[idx] = rgba[0]!;
+      this.canvas.pixels[idx + 1] = rgba[1]!;
+      this.canvas.pixels[idx + 2] = rgba[2]!;
+      this.canvas.pixels[idx + 3] = 255;
+    } else if (sa > 0) {
+      const da = this.canvas.pixels[idx + 3]! / 255;
+      const outA = sa + da * (1 - sa);
+      const blend = (s: number, d: number) => Math.round((s * sa + d * da * (1 - sa)) / Math.max(0.001, outA));
+      this.canvas.pixels[idx] = blend(rgba[0]!, this.canvas.pixels[idx]!);
+      this.canvas.pixels[idx + 1] = blend(rgba[1]!, this.canvas.pixels[idx + 1]!);
+      this.canvas.pixels[idx + 2] = blend(rgba[2]!, this.canvas.pixels[idx + 2]!);
+      this.canvas.pixels[idx + 3] = Math.round(outA * 255);
+    }
+  }
+
+  private _fillRectInternal(x: number, y: number, w: number, h: number, rgba: number[], isClear: boolean): void {
+    const x0 = Math.max(0, Math.floor(Math.min(x, x + w)));
+    const y0 = Math.max(0, Math.floor(Math.min(y, y + h)));
+    const x1 = Math.min(this.canvas.width, Math.floor(Math.max(x, x + w)));
+    const y1 = Math.min(this.canvas.height, Math.floor(Math.max(y, y + h)));
     for (let yy = y0; yy < y1; yy++) {
       for (let xx = x0; xx < x1; xx++) {
-        const idx = (yy * this.canvas.width + xx) * 4;
-        if (rgba[3] === 0 && this.globalCompositeOperation === "source-over") {
-          // clearRect path
-          this.canvas.pixels[idx] = 0;
-          this.canvas.pixels[idx + 1] = 0;
-          this.canvas.pixels[idx + 2] = 0;
-          this.canvas.pixels[idx + 3] = 0;
-        } else {
-          this.canvas.pixels[idx] = rgba[0]!;
-          this.canvas.pixels[idx + 1] = rgba[1]!;
-          this.canvas.pixels[idx + 2] = rgba[2]!;
-          this.canvas.pixels[idx + 3] = rgba[3]!;
-        }
+        this._putPixel(xx, yy, rgba, isClear);
       }
     }
   }
 
-  private _line(x0: number, y0: number, x1: number, y1: number, rgba: number[]): void {
-    // Bresenham
+  private _stamp(cx: number, cy: number, radius: number, rgba: number[]): void {
+    const r = Math.max(0, Math.floor(radius));
+    if (r === 0) {
+      this._putPixel(Math.round(cx), Math.round(cy), rgba, false);
+      return;
+    }
+    const r2 = r * r;
+    for (let y = -r; y <= r; y++) {
+      for (let x = -r; x <= r; x++) {
+        if (x * x + y * y <= r2) this._putPixel(Math.round(cx) + x, Math.round(cy) + y, rgba, false);
+      }
+    }
+  }
+
+  private _line(x0: number, y0: number, x1: number, y1: number, rgba: number[], width: number): void {
     let xa = Math.round(x0), ya = Math.round(y0);
     const xb = Math.round(x1), yb = Math.round(y1);
     const dx = Math.abs(xb - xa);
@@ -154,8 +240,9 @@ export class MockCanvasRenderingContext2D {
     const sx = xa < xb ? 1 : -1;
     const sy = ya < yb ? 1 : -1;
     let err = dx + dy;
+    const radius = Math.max(0, width / 2);
     while (true) {
-      this._fillRectInternal(xa, ya, 1, 1, rgba);
+      this._stamp(xa, ya, radius, rgba);
       if (xa === xb && ya === yb) break;
       const e2 = 2 * err;
       if (e2 >= dy) { err += dy; xa += sx; }
@@ -163,20 +250,93 @@ export class MockCanvasRenderingContext2D {
     }
   }
 
+  private _strokeCircle(cx: number, cy: number, r: number, rgba: number[], width: number): void {
+    const steps = Math.max(8, Math.floor(r * 6));
+    let prevX = cx + r, prevY = cy;
+    for (let i = 1; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const x = cx + r * Math.cos(a);
+      const y = cy + r * Math.sin(a);
+      this._line(prevX, prevY, x, y, rgba, width);
+      prevX = x;
+      prevY = y;
+    }
+  }
+
+  private _strokeEllipse(cx: number, cy: number, rx: number, ry: number, rgba: number[], width: number): void {
+    const steps = Math.max(12, Math.floor(Math.max(rx, ry) * 6));
+    let prevX = cx + rx, prevY = cy;
+    for (let i = 1; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const x = cx + rx * Math.cos(a);
+      const y = cy + ry * Math.sin(a);
+      this._line(prevX, prevY, x, y, rgba, width);
+      prevX = x;
+      prevY = y;
+    }
+  }
+
+  private _fillCircle(cx: number, cy: number, r: number, rgba: number[]): void {
+    const ri = Math.ceil(r);
+    const r2 = r * r;
+    for (let y = -ri; y <= ri; y++) {
+      for (let x = -ri; x <= ri; x++) {
+        if (x * x + y * y <= r2) this._putPixel(Math.round(cx) + x, Math.round(cy) + y, rgba, false);
+      }
+    }
+  }
+
+  private _fillEllipse(cx: number, cy: number, rx: number, ry: number, rgba: number[]): void {
+    const rxi = Math.ceil(rx);
+    const ryi = Math.ceil(ry);
+    const rx2 = rx * rx;
+    const ry2 = ry * ry;
+    for (let y = -ryi; y <= ryi; y++) {
+      for (let x = -rxi; x <= rxi; x++) {
+        if ((x * x) / Math.max(1, rx2) + (y * y) / Math.max(1, ry2) <= 1) {
+          this._putPixel(Math.round(cx) + x, Math.round(cy) + y, rgba, false);
+        }
+      }
+    }
+  }
+
+  private _fillPolygon(points: { x: number; y: number }[], rgba: number[]): void {
+    if (points.length < 3) return;
+    const minY = Math.max(0, Math.floor(Math.min(...points.map((p) => p.y))));
+    const maxY = Math.min(this.canvas.height - 1, Math.ceil(Math.max(...points.map((p) => p.y))));
+    for (let y = minY; y <= maxY; y++) {
+      const xs: number[] = [];
+      for (let i = 0; i < points.length; i++) {
+        const a = points[i]!;
+        const b = points[(i + 1) % points.length]!;
+        if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+          const t = (y - a.y) / (b.y - a.y);
+          xs.push(a.x + t * (b.x - a.x));
+        }
+      }
+      xs.sort((u, v) => u - v);
+      for (let i = 0; i + 1 < xs.length; i += 2) {
+        const x0 = Math.max(0, Math.floor(xs[i]!));
+        const x1 = Math.min(this.canvas.width - 1, Math.ceil(xs[i + 1]!));
+        for (let x = x0; x <= x1; x++) this._putPixel(x, y, rgba, false);
+      }
+    }
+  }
+
   private _blit(src: MockHTMLCanvasElement, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void {
-    // nearest-neighbour blit; respects globalAlpha
+    const srcW = src.width;
     for (let yy = 0; yy < dh; yy++) {
       for (let xx = 0; xx < dw; xx++) {
         const u = Math.floor(sx + (xx / dw) * sw);
         const v = Math.floor(sy + (yy / dh) * sh);
-        if (u < 0 || v < 0 || u >= src.width || v >= src.height) continue;
-        const sIdx = (v * src.width + u) * 4;
+        if (u < 0 || v < 0 || u >= srcW || v >= src.height) continue;
+        const sIdx = (v * srcW + u) * 4;
+        const sa = (src.pixels[sIdx + 3]! / 255) * this.globalAlpha;
+        if (sa <= 0) continue;
         const dxp = dx + xx;
         const dyp = dy + yy;
         if (dxp < 0 || dyp < 0 || dxp >= this.canvas.width || dyp >= this.canvas.height) continue;
         const dIdx = (dyp * this.canvas.width + dxp) * 4;
-        const sa = (src.pixels[sIdx + 3]! / 255) * this.globalAlpha;
-        if (sa <= 0) continue;
         const da = this.canvas.pixels[dIdx + 3]! / 255;
         const outA = sa + da * (1 - sa);
         if (outA <= 0) continue;
@@ -208,7 +368,6 @@ export class MockHTMLCanvasElement {
     return this._ctx;
   }
 
-  // When width/height are reassigned, the bitmap is reallocated (matching DOM behavior).
   resize(w: number, h: number): void {
     this.width = w;
     this.height = h;
@@ -253,7 +412,6 @@ function parseColor(s: string): number[] {
   return named[s] ?? [0, 0, 0, 255];
 }
 
-// Install on globalThis so DOM-typed code (`document.createElement('canvas')`) works in Node tests.
 export function installCanvasGlobals(): void {
   const g = globalThis as unknown as Record<string, unknown>;
   if (!g["document"]) {

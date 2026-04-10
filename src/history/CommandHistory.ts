@@ -91,6 +91,18 @@ export class CommandHistory extends Emitter<HistoryEvents> {
     return h;
   }
 
+  /**
+   * Replace contents in place without breaking listeners. Used by
+   * `PainterApp.applyState` after loading a project.
+   */
+  replace(payload: { past: SerializedCommand[]; future: SerializedCommand[] }): void {
+    this.past = payload.past.map(deserializeCommand);
+    this.future = payload.future.map(deserializeCommand);
+    this.currentBytes = this.past.reduce((s, c) => s + c.estimateBytes(), 0)
+      + this.future.reduce((s, c) => s + c.estimateBytes(), 0);
+    this.emit("change", { kind: "load" });
+  }
+
   private evict(): void {
     while (this.currentBytes > this.maxBytes && this.past.length > 1) {
       const dropped = this.past.shift()!;
