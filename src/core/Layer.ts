@@ -58,7 +58,7 @@ export interface Ctx2D {
   fill(): void;
   drawImage(...args: unknown[]): void;
   getImageData(x: number, y: number, w: number, h: number): { width: number; height: number; data: Uint8ClampedArray };
-  putImageData(img: { width: number; height: number; data: Uint8ClampedArray }, x: number, y: number): void;
+  putImageData(img: ImageData | { width: number; height: number; data: Uint8ClampedArray }, x: number, y: number): void;
   createImageData(w: number, h: number): { width: number; height: number; data: Uint8ClampedArray };
   setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void;
 }
@@ -116,7 +116,11 @@ export class Layer {
   }
 
   putPixels(img: { width: number; height: number; data: Uint8ClampedArray }, x: number, y: number): void {
-    this.ctx.putImageData(img, x, y);
+    let out: ImageData | { width: number; height: number; data: Uint8ClampedArray } = img;
+    if (typeof ImageData !== "undefined" && !(img instanceof ImageData)) {
+      out = new ImageData(img.data as any, img.width, img.height);
+    }
+    this.ctx.putImageData(out, x, y);
   }
 
   cloneSnapshotMeta(): Omit<LayerSnapshot, "pngBase64" | "rawRGBA"> {
@@ -162,10 +166,10 @@ export class Layer {
     if (snap.rleRGBA && snap.rleRGBA.length > 0) {
       const compressed = decodeBase64(snap.rleRGBA);
       const data = rleDecodeRGBA(compressed, expected);
-      layer.ctx.putImageData({ width: snap.width, height: snap.height, data }, 0, 0);
+      layer.putPixels({ width: snap.width, height: snap.height, data }, 0, 0);
     } else if (snap.rawRGBA && snap.rawRGBA.length > 0) {
       const data = decodeBase64(snap.rawRGBA);
-      layer.ctx.putImageData({ width: snap.width, height: snap.height, data }, 0, 0);
+      layer.putPixels({ width: snap.width, height: snap.height, data }, 0, 0);
     }
     // otherwise leave the layer blank (compact save for transparent layers)
     return layer;

@@ -170,6 +170,11 @@ export class MockCanvasRenderingContext2D {
   }
 
   putImageData(img: MockImageData, x: number, y: number): void {
+    // Note: In real browser environment, ImageData is a class.
+    // In our Node environment, it might not be defined or might be a polyfill.
+    if (typeof ImageData !== "undefined" && !(img instanceof ImageData)) {
+      throw new TypeError("Failed to execute 'putImageData' on 'CanvasRenderingContext2D': parameter 1 is not of type 'ImageData'.");
+    }
     for (let yy = 0; yy < img.height; yy++) {
       for (let xx = 0; xx < img.width; xx++) {
         const dx = x + xx;
