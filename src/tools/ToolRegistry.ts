@@ -6,6 +6,7 @@ import { GradientTool } from "./GradientTool.js";
 import { EyedropperTool } from "./EyedropperTool.js";
 import { SmudgeTool } from "./SmudgeTool.js";
 import { PatternBrush } from "./PatternBrush.js";
+import { TextTool } from "./TextTool.js";
 
 export interface ToolDescriptor {
   id: string;
@@ -88,6 +89,7 @@ export function buildDefaultRegistry(): ToolRegistry {
   r.register("eyedropper", new EyedropperTool(), "스포이드", "K", "💧", "클릭한 위치의 색을 추출해 팔레트에 넣습니다");
   r.register("smudge", new SmudgeTool(), "문지르기", "U", "👆", "픽셀을 문질러 색을 섞습니다 (빈 곳에선 현재 색을 끌고 갑니다)");
   r.register("pattern", new PatternBrush(), "패턴", "P", "✦", "패턴 마스크로 칠합니다");
+  r.register("text", new TextTool(), "글자", "T", "🅣", "클릭한 위치에 텍스트를 입력해 스탬프처럼 찍습니다");
 
   return r;
 }

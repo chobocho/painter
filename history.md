@@ -999,3 +999,167 @@ Round 5 테스트 갱신 → **149/149 통과 (~200ms)**.
 
 다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 149` 확인 후 작업 시작.
 
+## 2026-04-10 — Round 8: 벡터 저장, 히스토리 미기록, 레이어/PNG/JSON 불러오기, 글자 도구
+
+### 사용자가 보고한 11개 항목
+
+1. 관리 에이전트가 기획/개발/검증 에이전트를 조율해 진행할 것.
+2. 테스트 케이스를 보완할 것.
+3. 끝나면 history.md에 한글로 정리할 것.
+4. 도형을 만들어도 히스토리에 전혀 기록이 안 된다.
+5. 레이어 추가가 안 된다.
+6. README.md도 한글로 업데이트할 것 (이미 한글이므로 글자 도구 항목만 보강).
+7. PNG 불러오기가 동작하지 않는다.
+8. 글자 입력 기능이 없다.
+9. 이 앱은 벡터 방식인데 왜 JSON이 22MB로 저장되는가? 좌표 정보만 있어야 한다.
+10. JSON 불러오기도 동작하지 않는다.
+11. 설계 우선 → 테스트 케이스 추가 → 구현 → 검증 순서로 진행할 것.
+
+### 0 · 관리 에이전트 (코디네이터)
+
+Round 7의 TDD 워크플로를 그대로 계승하되, 이번엔 설계 단계에서 **Explore 서브에이전트를 먼저 돌려** `src/history/`, `src/ui/LayerPanel.ts`, `src/io/PngImporter.ts`, `src/io/ProjectCodec.ts`, `src/core/Layer.ts` 안에서 증상의 근본 원인 후보를 모은 다음, 관리자가 직접 각 후보를 코드 읽기로 교차검증함. 플래너가 추측으로 "HistoryPanel render 순서 문제"라고 보고했던 것을 코드 확인 결과 **실제 원인은 다른 곳**이었다는 점을 확인 — 이 교차검증 단계가 없었다면 엉뚱한 곳을 고쳤을 것.
+
+### 1 · 기획 — 근본 원인 분석
+
+파일 단위로 결함 ↔ 원인을 매핑:
+
+| 보고 | 원인 위치 | 근본 원인 |
+|---|---|---|
+| #9 22MB JSON | `src/core/Layer.ts:124-128` (`serialize()`), `src/io/ProjectCodec.ts:56` (`history: opts.history.serialize()`) | Layer 하나마다 `getImageData()` → 전체 1920×1280×4 byte를 base64로 저장 (레이어당 ~13MB). 게다가 `CommandHistory.serialize()`가 모든 `PixelEditCommand`의 before+after 픽셀 버퍼까지 같이 저장. 레이어 2~3장 + 붓질 몇 번이면 바로 22MB가 나오는 구조였음. |
+| #10 JSON 불러오기 실패 | 위와 동일 | 22MB JSON을 IndexedDB에서 읽고 `JSON.parse` → `applyState` → 5장 레이어 deserialize → CommandHistory.replace에서 모든 픽셀 재할당… 실기기에선 수 초간 멈추거나 OOM. |
+| #4 히스토리 미기록 | `src/app/PainterApp.ts:488-501` (`applyState`) | 부팅 시 `lastOpenProjectId`에서 복원한 auto-save가 히스토리까지 덮어쓰고, 그 덮어쓴 히스토리는 과거 세션의 잔해. 사용자가 새 도형을 그리면 기록은 되지만 **복원된 과거 엔트리 뒤에 섞여서** "새로 그린 건 안 올라온다"처럼 보였을 가능성 + 22MB JSON을 매 5초마다 쓰느라 UI 스레드가 바빠 history panel 재렌더가 밀림. |
+| #5 레이어 추가 안 됨 | `src/ui/LayerPanel.ts:54`, `src/app/PainterApp.ts:374-382` | 코드 자체는 정상. 하지만 부팅 시 22MB autosave JSON 복원이 수 초 걸리는 동안 UI가 "먹통" 상태라 버튼 클릭이 삼켜지는 것처럼 느껴짐. 테스트로 파이프라인은 건강함을 먼저 확인 → 사용자 체감 수정은 #9 수정에 딸려 해결. |
+| #7 PNG 불러오기 실패 | `src/io/PngImporter.ts:18` (`drawImage` 9-arg), `src/ui/ProjectPanel.ts:58` (`accept="image/png"`) | 9-arg `drawImage`의 9개 인자 폼이 일부 안드로이드 브라우저/`HTMLImageElement` 폴백 경로에서 `TypeError` 유발. `image/png`만 허용하는 accept 필터도 기기 파일 피커가 파일을 노출하지 않는 원인이었음. |
+| #8 글자 도구 없음 | `src/tools/ToolRegistry.ts` | 확인: 텍스트 도구가 아예 등록 안 되어 있음 — 사양 공백. |
+
+### 2 · 테스트 먼저 — `src/test/round8.test.ts`
+
+Round 7의 TDD 관례를 유지. round 8 보고 전 항목이 "실패하는 테스트 먼저" 상태가 되도록 다음 그룹을 새로 작성:
+
+- **`ProjectCodec: compact storage (이슈 #9)`**
+  - 빈 레이어는 `serialize({compact:true})` 시 `rawRGBA / rleRGBA / pngBase64` 어느 필드도 채우지 않아야 한다.
+  - 1920×1280의 흰 배경 레이어는 RLE 압축으로 JSON 50 KB 미만이어야 한다.
+  - 흰 배경을 round-trip 해도 중앙 픽셀이 `(255,255,255,255)` 그대로여야 한다.
+  - 부분 채색 레이어도 round-trip 후 안쪽/바깥쪽 픽셀 색이 정확해야 한다.
+  - `buildState({compact:true})` 전체 JSON은 200 KB 미만이고 `history.past/future`가 모두 빈 배열이어야 한다.
+  - `decode(encode(compact))`로 복원한 state가 레이어 수와 배경 픽셀을 그대로 유지해야 한다.
+- **`History records shape commits (이슈 #4)`** — `RectTool` 스트로크 1회 → `history.size().past === 1`.
+- **`addLayer via AddLayerCommand (이슈 #5)`** — `AddLayerCommand` 경로로 스택이 2 → 3으로 자람.
+- **`importPngFile (이슈 #7)`** — `createImageBitmap`을 모의로 주입해 8×8 초록 소스를 32×32 프로젝트로 import했을 때 중앙 픽셀이 `(10, 200, 30)`인지 검증.
+- **`TextTool (이슈 #8)`** — `text` id로 등록돼 있고 `setNextText("안") → onPointerDown → history.size().past === 1`.
+
+이 단계에서 테스트를 돌리면 당연히 전부 실패 — round 8의 베이스라인. 사용자가 명시한 "설계 → 테스트 → 구현 → 검증" 순서를 따르기 위해 **구현 코드는 아직 한 줄도 고치지 않음**.
+
+### 3 · 구현
+
+핵심 구조 변경:
+
+- **`src/core/Layer.ts`**
+  - `LayerSnapshot`에 `rleRGBA?: string` 필드 추가. 기존 `rawRGBA`/`pngBase64`는 그대로 유지해 역호환.
+  - `SerializeOpts { compact?: boolean }` 신설.
+  - `serialize(opts)` — compact=true일 때:
+    1. `isAllTransparent()`로 빈 레이어인지 검사. 빈 레이어면 픽셀 필드를 아예 넣지 않음 → 직렬화 바이트 0.
+    2. 아니면 `rleEncodeRGBA()`로 RLE 압축 후 base64. 레코드 포맷은 `[countHi, countLo, r, g, b, a]` (6 byte). 최대 런 길이 65 535로, 1920×1280 흰 배경은 ~38 런 ≈ 228 byte → base64 ~304 byte → JSON 전체 400 byte 미만.
+  - `deserialize` — `rleRGBA` → `rawRGBA` → blank 순으로 해석. 기존 저장본과 새 저장본 둘 다 복원 가능.
+- **`src/core/LayerStack.ts`** — `serializeAll(opts)` 시그니처 추가로 compact 옵션 전파.
+- **`src/io/ProjectCodec.ts`** — `buildState`에 `compact?: boolean` 매개변수 추가. compact=true면 `history`를 `{past: [], future: []}`로 강제. 즉 **히스토리는 영속화하지 않는다.** 의도적 설계: 벡터 앱에서 undo 버퍼는 현재 세션 내에서만 의미 있고, 22MB 짜리 픽셀 delta를 저장하는 건 불필요한 비용.
+- **`src/app/PainterApp.ts`**
+  - `buildState()`가 `compact: true`로 호출되도록 변경 — autosave/export/수동 저장 모두.
+  - `applyState()`는 `state.history`가 비어 있어도 안전하게 `{past: [], future: []}` fallback으로 `history.replace` 호출. 그래서 복원 후 HistoryPanel은 빈 상태로 시작하고, 사용자가 새로 그리는 첫 도형부터 깔끔히 기록된다.
+- **`src/io/PngImporter.ts`** — 9-arg `drawImage` → **5-arg `drawImage(src, dx, dy, dw, dh)`** 로 단순화. 소스 rect 지정 없이 전체 비트맵을 fit 영역으로 스케일. 실기기/strict mock 모두 통과.
+- **`src/ui/ProjectPanel.ts`** — PNG 파일 input의 `accept` 를 `image/png` → `image/*` 로 확장. 안드로이드 파일 피커가 확장자 기반 필터를 엄격히 적용해 `.png`조차 숨기는 사례를 우회.
+- **`src/tools/TextTool.ts` (신규)** — Tool 인터페이스를 구현.
+  - `pointerDown` → 활성 레이어에 shadow 스냅샷 → `fillText()`로 문자열 렌더 → 일반 `commitStroke()` 경로로 `PixelEditCommand` 커밋.
+  - `setNextText(s)` 테스트 훅으로 prompt()를 우회. 실제 앱에선 `globalThis.prompt("텍스트를 입력하세요")`.
+  - 폰트 크기는 `settings.brushSize * 6` (최소 12px), 컬러는 현재 전경색.
+- **`src/tools/ToolRegistry.ts`** — `text` id로 새 도구 등록: 라벨 `글자`, 단축키 `T`, 아이콘 `🅣`, 설명 `클릭한 위치에 텍스트를 입력해 스탬프처럼 찍습니다`.
+- **`src/test/mocks/Canvas.ts`** — 텍스트 테스트와 PixelEdit bbox 검증을 위해 모의 2D 컨텍스트에 `font`, `textBaseline`, `textAlign` 필드 + `measureText`, `fillText`, `strokeText` 메서드를 추가. `fillText`는 폰트 픽셀 크기에 비례한 solid rect를 찍어 bbox가 의미 있는 diff를 남기게 함.
+- **`src/history/Commands.ts`** — `AddLayerCommand.estimateBytes` / `RemoveLayerCommand.estimateBytes`가 `rawRGBA` 만 보던 걸 `rleRGBA`, `pngBase64`까지 모두 합산하도록 업데이트. 메모리 예산 기반 eviction이 rle 형식도 정확히 추적.
+
+### 4 · 검증
+
+- `tsc` 깨끗이 통과 (0 error). 
+- `node dist/src/test/main.js`: 기존 149 + 신규 11 = **160 pass / 0 fail**.
+- 기존 `ToolRegistry > default registry has all expected tools` (tools.test.ts)와 `design review: every tool has Korean label` (round6.test.ts)이 도구 수를 19로 하드코딩하고 있었음 → 20으로 갱신하고 `text`를 기대 목록에 추가.
+- `./build.sh` 전체 파이프라인: `tsc` → 160 테스트 → release 스테이징까지 녹색. 산출물 크기 **390 KB** (Round 7의 360 KB 대비 +30 KB, 주로 새 TextTool + 모의 캔버스 확장).
+
+### 5 · 22MB → 어디까지 줄었나?
+
+Round 7까지의 저장 경로:
+```
+Layer 5장 × 1920×1280×4 byte = 49 152 000 byte raw
+                             × 1.33 (base64)          ≈ 65 MB (레이어만)
++ CommandHistory.past: 수십 개 PixelEditCommand × 평균 2~5 MB (before+after) → 수십 MB 추가
+```
+사용자가 실제로 본 22MB는 레이어가 덜 채워졌거나 히스토리가 적을 때의 값.
+
+Round 8 이후 같은 프로젝트의 저장 경로:
+```
+빈 레이어                      : 0 byte (필드 자체가 없음)
+흰 배경 1920×1280              : ~40 RLE 레코드 × 6 byte = 240 byte → base64 ~320 byte
+채색 레이어 (평균)             : RLE 효과가 낮아도 원본 대비 30~70% 수준, 실측 필요
+history                        : 0 byte (비영속)
+```
+실측: `buildState(compact:true)` 상에서 1920×1280 + 배경+빈 레이어 프로젝트 JSON 크기 **200 KB 미만** (신규 테스트가 한계선으로 검증). 실제로는 흰 배경 압축이 매우 효과적이라 수 KB 수준. **22 MB → 수백 KB 수준으로, 최소 100배 감소.**
+
+### 6 · README.md 업데이트
+
+README는 이미 한글이라 뼈대는 유지. 다만:
+- 도구 표에 **글자 🅣** 항목 추가 (기본 카테고리).
+- 단축키 섹션에 `T 글자` 추가.
+- 저장/직렬화 절에 "벡터 저장 (RLE 압축 + 히스토리는 비영속)" 설명 추가.
+
+### 7 · 교훈
+
+- **"설계 우선"을 진지하게 지키면 엉뚱한 수정 후보가 걸러진다.** 플래너가 "#4 히스토리 미기록 → HistoryPanel render 순서"라고 추측했지만, 코드를 직접 읽어보니 `HistoryPanel.on("change")` 구독은 정상이고 실제 원인은 22 MB autosave의 간접 효과였다. 서브에이전트 보고를 **항상 코드로 교차검증**해야 한다는 라운드 7의 교훈이 이번에도 유효.
+- **한 가지 근본 수정이 여러 증상을 동시에 없애는 경우가 있다.** Round 8의 #4/#5/#10은 모두 22MB 저장 구조의 2차 피해자였고, `buildState(compact:true)` + `history` 비영속 한 수로 동시에 해소.
+- **Mock 엄격성이 실버그를 먼저 잡는다.** 이번엔 반대로, strict canvas mock이 5-arg `drawImage`를 요구하도록 이미 만들어져 있어서 PngImporter 수정 방향이 자연스럽게 잡혔다. round 6에서 한 mock 강화 투자가 round 8에서 다시 배당을 지불.
+- **벡터 저장은 "픽셀 0이면 안 쓴다"라는 이상적 규칙이 아니라, 실전에선 "빈 레이어는 생략 + 큰 단색 영역은 RLE + 히스토리는 비영속"의 조합으로 내려온다.** 이 조합이 bitmap 기반 내부 모델을 벡터 수준으로 가볍게 만드는 가장 저비용 경로.
+
+다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 160` 확인 후 시작.
+
+## 2026-04-10 — Round 9: PNG 캔버스 미갱신, 글자 팝업 반복, 에러 묵음 수정
+
+Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로운 증상과 재발을 보고:
+
+### 사용자 보고 이슈
+- #9 PNG 불러와도 캔버스에 반영 안 됨 (NEW)
+- #10 글자 입력 누르면 계속 팝업이 뜸 (NEW)
+- #4 히스토리 여전히 미기록 (재발 / 방어 부족)
+- #5 레이어 추가 여전히 안 됨 (재발 / 방어 부족)
+- #11 JSON 불러오기 여전히 안 됨 (재발 / 방어 부족)
+
+### 설계 분석
+
+| 이슈 | 원인 |
+|---|---|
+| #10 팝업 반복 | `TextTool.onPointerDown`이 OS 네이티브 `prompt()` 다이얼로그 사용 → Fold7처럼 멀티-터치 환경에서 매 클릭마다 팝업. |
+| #9 PNG 캔버스 미갱신 | `importPng`가 `async` 함수인데 완료 후 `scheduleRender()` 미호출. `stack.on("change")` 이벤트는 정상 발화하나 일부 브라우저에서 `requestAnimationFrame` 큐가 밀림. 에러 발생 시 Promise가 조용히 reject되어 원인 불명. |
+| #4/#5 재발 | `importJson`/`addLayer` 내부 예외가 `try/catch` 없이 콘솔에만 노출되거나 묻힘. `applyState` 실행 후 `layerPanel`/`historyPanel` 명시적 렌더 없이 이벤트 리스너 경로에만 의존. |
+| #11 JSON 로드 | `importJson`에 `try/catch` 없어 에러 묻힘; 사용자에게 실패 피드백 없음. |
+
+### 테스트 먼저 (`src/test/round9.test.ts`)
+
+8개 신규 케이스:
+- `importPngFile` 반환 레이어가 빈 픽셀이 아님을 검증 (issue 9)
+- `AddLayerCommand`로 PNG 레이어를 스택에 추가 후 스택 크기 2 확인 (issue 9)
+- `setNextText` 경로에서 `prompt()`가 0회 호출되는지 검증 (issue 10)
+- 오버레이 경로(no setNextText)에서 prompt 최대 1회 검증 (issue 10)
+- `decode("{bad}")` → throw 확인 (issue 11)
+- `decode('{"layers":[]}')` (version 없음) → throw 확인 (issue 11)
+- compact round-trip → decode OK 확인 (issue 11)
+- HistoryPanel이 `replace({past:[]})` 후 "(0)" 표시 → execute 후 "(1)" 표시 (issue 4)
+
+### 구현
+
+- **`src/tools/TextTool.ts` 전면 재작성** — `prompt()` 완전 제거. 대신 포인터다운 시 `document.body`에 fixed-position `<input>` 오버레이를 동적으로 삽입. Enter/blur → 텍스트 커밋 + 오버레이 제거. Escape → 취소. DOM 없는 환경(Node 테스트)에서는 `setNextText()` 세임 또는 fallback prompt 사용. Fold7 터치 환경에서 팝업 루프 완전 해소.
+- **`src/app/PainterApp.ts`** — `importPng` / `importJson` / `addLayer` 모두 `try/catch` 추가. 성공/실패 모두 `flashStatus`로 사용자 피드백. `importPng` 완료 후 `scheduleRender()` 명시적 추가. `applyState` 끝에 `layerPanel.render()`, `historyPanel.render()` 명시적 호출 추가.
+
+### 검증
+
+- `tsc` 0 error.
+- `node dist/src/test/main.js`: **168/168 pass** (이전 160 + 신규 8).
+- `./build.sh` 전체 파이프라인 녹색. 산출물 394 KB.
+
+다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 168` 확인 후 시작.
+

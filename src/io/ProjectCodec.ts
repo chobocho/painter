@@ -40,7 +40,16 @@ export const ProjectCodec = {
     history: CommandHistory;
     settings: ToolSettings;
     createdAt: number;
+    /**
+     * When true (the default for the save/export path), the codec drops
+     * blank layers' pixel data, RLE-compresses the rest, and persists an
+     * empty history. Undo/redo stays alive in memory until reload. This
+     * shrinks a white 1920x1280 project from ~22 MB down to < 200 KB —
+     * the core fix for round 8's JSON bloat.
+     */
+    compact?: boolean;
   }): ProjectState {
+    const compact = opts.compact ?? false;
     return {
       version: PROJECT_VERSION,
       meta: {
@@ -51,9 +60,9 @@ export const ProjectCodec = {
         createdAt: opts.createdAt,
         updatedAt: Date.now(),
       },
-      layers: opts.stack.serializeAll(),
+      layers: opts.stack.serializeAll({ compact }),
       activeLayerId: opts.stack.getActiveId(),
-      history: opts.history.serialize(),
+      history: compact ? { past: [], future: [] } : opts.history.serialize(),
       settings: opts.settings,
     };
   },

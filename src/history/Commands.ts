@@ -114,7 +114,10 @@ export class AddLayerCommand implements Command {
     ctx.stack.remove(this.snapshot.id);
   }
   estimateBytes(): number {
-    return (this.snapshot.rawRGBA?.length ?? 0) + 256;
+    return (this.snapshot.rawRGBA?.length ?? 0)
+      + (this.snapshot.rleRGBA?.length ?? 0)
+      + (this.snapshot.pngBase64?.length ?? 0)
+      + 256;
   }
   serialize(): SerializedCommand {
     return { kind: this.kind, data: { id: this.id, label: this.label, snapshot: this.snapshot, index: this.index } };
@@ -139,7 +142,12 @@ export class RemoveLayerCommand implements Command {
     const layer = Layer.deserialize(this.snapshot, ctx.stack.factory);
     ctx.stack.add(layer, this.index);
   }
-  estimateBytes(): number { return (this.snapshot.rawRGBA?.length ?? 0) + 256; }
+  estimateBytes(): number {
+    return (this.snapshot.rawRGBA?.length ?? 0)
+      + (this.snapshot.rleRGBA?.length ?? 0)
+      + (this.snapshot.pngBase64?.length ?? 0)
+      + 256;
+  }
   serialize(): SerializedCommand {
     return { kind: this.kind, data: { id: this.id, label: this.label, snapshot: this.snapshot, index: this.index } };
   }

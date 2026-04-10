@@ -26,6 +26,9 @@ export class MockCanvasRenderingContext2D {
   globalAlpha: number = 1;
   globalCompositeOperation: string = "source-over";
   imageSmoothingEnabled: boolean = true;
+  font: string = "10px sans-serif";
+  textBaseline: string = "alphabetic";
+  textAlign: string = "start";
 
   private _path: PathOp[] = [];
   private _stateStack: Partial<MockCanvasRenderingContext2D>[] = [];
@@ -43,6 +46,9 @@ export class MockCanvasRenderingContext2D {
       lineJoin: this.lineJoin,
       globalAlpha: this.globalAlpha,
       globalCompositeOperation: this.globalCompositeOperation,
+      font: this.font,
+      textBaseline: this.textBaseline,
+      textAlign: this.textAlign,
     });
   }
   restore(): void {
@@ -182,6 +188,27 @@ export class MockCanvasRenderingContext2D {
   createImageData(w: number, h: number): MockImageData {
     return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
   }
+
+  // Minimal text support: stamp a solid rectangle whose size roughly matches
+  // the font so PixelEdit bboxes look sane and round8.test can detect the
+  // diff. A true font-rasterizer would be overkill for unit tests.
+  measureText(text: string): { width: number } {
+    const sz = parseFontSize(this.font);
+    return { width: Math.max(1, Math.round(text.length * sz * 0.6)) };
+  }
+
+  fillText(text: string, x: number, y: number): void {
+    const c = parseColor(this.fillStyle);
+    const sz = parseFontSize(this.font);
+    const w = Math.max(1, Math.round(text.length * sz * 0.6));
+    const h = Math.max(1, sz);
+    // textBaseline "top" draws below y; anything else we treat as "alphabetic"
+    // and shift up a bit so the bbox still lands on the layer.
+    const dy = this.textBaseline === "top" ? y : (y - Math.round(h * 0.8));
+    this._fillRectInternal(Math.round(x), Math.round(dy), w, h, c, false);
+  }
+
+  strokeText(text: string, x: number, y: number): void { this.fillText(text, x, y); }
 
   // ---- internal raster helpers --------------------------------------------
 
@@ -385,6 +412,11 @@ export class MockHTMLCanvasElement {
     this.height = h;
     this.pixels = new Uint8ClampedArray(w * h * 4);
   }
+}
+
+function parseFontSize(font: string): number {
+  const m = font.match(/(\d+(?:\.\d+)?)px/);
+  return m ? Math.round(parseFloat(m[1]!)) : 10;
 }
 
 function parseColor(s: string): number[] {

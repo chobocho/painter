@@ -1,4 +1,4 @@
-import { Layer, CanvasFactory, Ctx2D, LayerSnapshot } from "./Layer.js";
+import { Layer, CanvasFactory, Ctx2D, LayerSnapshot, SerializeOpts } from "./Layer.js";
 import { Rect } from "../util/Rect.js";
 import { Emitter } from "../util/Events.js";
 
@@ -147,8 +147,8 @@ export class LayerStack extends Emitter<StackEvents> {
     target.globalCompositeOperation = "source-over";
   }
 
-  serializeAll(): LayerSnapshot[] {
-    return this.layers.map((l) => l.serialize());
+  serializeAll(opts: SerializeOpts = {}): LayerSnapshot[] {
+    return this.layers.map((l) => l.serialize(opts));
   }
 
   static fromSnapshots(snaps: LayerSnapshot[], width: number, height: number, factory: CanvasFactory, activeId?: string | null): LayerStack {

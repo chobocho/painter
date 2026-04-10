@@ -210,10 +210,10 @@ describe("SmudgeTool: discoverable on a blank canvas (issue 6)", () => {
 // ---- Design review: every tool has Korean label + description ------------
 
 describe("design review: every tool has Korean label and description", () => {
-  it("buildDefaultRegistry produces 19 descriptors with non-empty fields", () => {
+  it("buildDefaultRegistry produces 20 descriptors with non-empty fields", () => {
     const r = buildDefaultRegistry();
     const list = r.list();
-    assertEqual(list.length, 19);
+    assertEqual(list.length, 20);
     for (const d of list) {
       assertTrue(d.label.length > 0, `${d.id} missing label`);
       assertTrue(d.description.length > 0, `${d.id} missing description`);

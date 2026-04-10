@@ -55,7 +55,10 @@ export class ProjectPanel {
     });
     const pngIn = document.createElement("input");
     pngIn.type = "file";
-    pngIn.accept = "image/png";
+    // Accept any image MIME; the underlying decoder handles PNG/JPEG/WebP
+    // and some Android browsers were rejecting the input when the accept
+    // filter was set to "image/png" specifically.
+    pngIn.accept = "image/*";
     pngIn.addEventListener("change", () => {
       const f = pngIn.files?.[0];
       if (f) this.handlers.onImportPng(f);

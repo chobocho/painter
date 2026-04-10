@@ -11,8 +11,19 @@ export interface LayerSnapshot {
   locked: boolean;
   width: number;
   height: number;
-  pngBase64?: string;       // for serialized save
-  rawRGBA?: string;         // base64 RGBA fallback when no PNG encoder available
+  pngBase64?: string;       // reserved for future PNG-encoder path
+  rawRGBA?: string;         // base64 of raw RGBA bytes (legacy/uncompressed)
+  rleRGBA?: string;         // base64 of run-length-encoded RGBA (compact form)
+}
+
+export interface SerializeOpts {
+  /**
+   * When true, the serializer drops pixel data entirely for blank layers and
+   * RLE-compresses everything else. Used by the project save path so a white
+   * 1920x1280 background shrinks from ~13 MB to a few hundred bytes instead
+   * of blowing up the exported JSON.
+   */
+  compact?: boolean;
 }
 
 // Tiny structural types so this module compiles in environments without DOM lib too.
@@ -121,10 +132,18 @@ export class Layer {
     };
   }
 
-  serialize(): LayerSnapshot {
+  serialize(opts: SerializeOpts = {}): LayerSnapshot {
     const meta = this.cloneSnapshotMeta();
     const img = this.ctx.getImageData(0, 0, this.width, this.height);
-    return { ...meta, rawRGBA: encodeBase64(img.data) };
+    if (!opts.compact) {
+      return { ...meta, rawRGBA: encodeBase64(img.data) };
+    }
+    // Compact path: detect blank, else RLE-compress.
+    if (isAllTransparent(img.data)) {
+      return { ...meta };
+    }
+    const rle = rleEncodeRGBA(img.data);
+    return { ...meta, rleRGBA: encodeBase64(rle) };
   }
 
   static deserialize(snap: LayerSnapshot, factory: CanvasFactory): Layer {
@@ -139,12 +158,64 @@ export class Layer {
     layer.opacity = snap.opacity;
     layer.blendMode = snap.blendMode;
     layer.locked = snap.locked;
-    if (snap.rawRGBA) {
+    const expected = snap.width * snap.height * 4;
+    if (snap.rleRGBA && snap.rleRGBA.length > 0) {
+      const compressed = decodeBase64(snap.rleRGBA);
+      const data = rleDecodeRGBA(compressed, expected);
+      layer.ctx.putImageData({ width: snap.width, height: snap.height, data }, 0, 0);
+    } else if (snap.rawRGBA && snap.rawRGBA.length > 0) {
       const data = decodeBase64(snap.rawRGBA);
       layer.ctx.putImageData({ width: snap.width, height: snap.height, data }, 0, 0);
     }
+    // otherwise leave the layer blank (compact save for transparent layers)
     return layer;
   }
+}
+
+function isAllTransparent(d: Uint8ClampedArray): boolean {
+  for (let i = 3; i < d.length; i += 4) if (d[i] !== 0) return false;
+  return true;
+}
+
+/**
+ * Simple RLE for RGBA pixels. Encoded as a sequence of 6-byte records —
+ * [countHi, countLo, r, g, b, a] — so one run can cover up to 65 535 pixels
+ * of the same colour. A solid 1920×1280 background shrinks from ~10 MB raw
+ * → ~40 records ≈ 240 bytes before base64, ~320 bytes after.
+ */
+export function rleEncodeRGBA(data: Uint8ClampedArray): Uint8ClampedArray {
+  const out: number[] = [];
+  const n = data.length;
+  let i = 0;
+  while (i < n) {
+    const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
+    let count = 1;
+    let j = i + 4;
+    while (j < n && count < 65535 &&
+      data[j] === r && data[j + 1] === g && data[j + 2] === b && data[j + 3] === a) {
+      count++;
+      j += 4;
+    }
+    out.push((count >> 8) & 0xff, count & 0xff, r, g, b, a);
+    i = j;
+  }
+  return new Uint8ClampedArray(out);
+}
+
+export function rleDecodeRGBA(src: Uint8ClampedArray, expectedBytes: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(expectedBytes);
+  let o = 0;
+  for (let i = 0; i + 5 < src.length + 1; i += 6) {
+    const count = ((src[i]! << 8) | src[i + 1]!) & 0xffff;
+    const r = src[i + 2]!, g = src[i + 3]!, b = src[i + 4]!, a = src[i + 5]!;
+    for (let k = 0; k < count; k++) {
+      out[o++] = r;
+      out[o++] = g;
+      out[o++] = b;
+      out[o++] = a;
+    }
+  }
+  return out;
 }
 
 export function encodeBase64(data: Uint8ClampedArray): string {

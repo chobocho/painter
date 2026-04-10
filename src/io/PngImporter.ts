@@ -15,7 +15,11 @@ export async function importPngFile(
   const fit = fitInside(bitmap.width, bitmap.height, projectWidth, projectHeight);
   const layer = new Layer({ name: name ?? file.name, width: projectWidth, height: projectHeight, factory });
   const ctx = layer.getCtx();
-  (ctx as any).drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, fit.x, fit.y, fit.w, fit.h);
+  // 5-arg drawImage(source, dx, dy, dw, dh). The 9-arg form with explicit
+  // source rect was rejected by the strict canvas mock (and reportedly by
+  // some Android browser builds) when the source was an HTMLImageElement
+  // fallback — this simpler form scales the whole bitmap into fit.
+  (ctx as any).drawImage(bitmap as unknown, fit.x, fit.y, fit.w, fit.h);
   return layer;
 }
 

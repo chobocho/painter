@@ -386,6 +386,7 @@ describe("ToolRegistry", () => {
       "ellipse", "ellipse-filled", "circle", "circle-filled",
       "triangle", "triangle-filled",
       "spray", "fill", "gradient", "eyedropper", "smudge", "pattern",
+      "text",
     ];
     for (const id of expected) assertTrue(r.has(id), `missing tool ${id}`);
     const ids = r.list().map((d) => d.id);

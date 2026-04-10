@@ -36,7 +36,9 @@ describe("Layer", () => {
     assertEqual(snap.name, "Test");
     assertEqual(snap.opacity, 0.5);
     assertEqual(snap.width, 4);
-    assertTrue(typeof snap.rawRGBA === "string" && snap.rawRGBA.length > 0);
+    const hasPixels = (typeof snap.rawRGBA === "string" && snap.rawRGBA.length > 0)
+      || (typeof snap.rleRGBA === "string" && snap.rleRGBA.length > 0);
+    assertTrue(hasPixels, "default serialize() should still ship pixel data for full-fidelity in-memory undo");
   });
 
   it("deserialize round-trips", () => {

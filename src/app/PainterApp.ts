@@ -376,9 +376,16 @@ export class PainterApp {
       this.flashStatus(`⚠️  최대 ${LAYER_LIMIT}개 레이어까지 만들 수 있습니다`, 2500);
       return;
     }
-    const layer = new Layer({ name: `레이어 ${this.stack.size() + 1}`, width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
-    this.history.execute(new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }), { stack: this.stack });
-    this.flashStatus(`✓ 레이어 추가 (${this.stack.size()}/${LAYER_LIMIT})`, 1200);
+    try {
+      const layer = new Layer({ name: `레이어 ${this.stack.size() + 1}`, width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
+      this.history.execute(new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }), { stack: this.stack });
+      this.scheduleRender();
+      this.flashStatus(`✓ 레이어 추가 (${this.stack.size()}/${LAYER_LIMIT})`, 1200);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.flashStatus(`⚠️ 레이어 추가 실패: ${msg}`, 3000);
+      console.error("addLayer failed", e);
+    }
   }
 
   private removeLayer(id: string): void {
@@ -482,6 +489,7 @@ export class PainterApp {
       history: this.history,
       settings: this.settings,
       createdAt: this.createdAt,
+      compact: true,
     });
   }
 
@@ -493,10 +501,19 @@ export class PainterApp {
     this.projectHeight = state.meta.height;
     // Mutate in place so existing listeners on stack/history stay alive.
     this.stack.reset(state.layers, state.meta.width, state.meta.height, state.activeLayerId);
-    this.history.replace(state.history);
+    // Compact saves drop the history payload — reload with an empty history
+    // so subsequent edits record cleanly into the (now listener-preserving)
+    // CommandHistory and show up in the HistoryPanel.
+    this.history.replace(state.history ?? { past: [], future: [] });
     Object.assign(this.settings, state.settings);
     this.previewLayer = new Layer({ name: "Preview", width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
     if (this.displayCanvas) this.displayCanvas.setProjectSize(this.projectWidth, this.projectHeight);
+    // Panels may have been created before this restore; force-refresh them so
+    // the layer list and history list are immediately in sync with the loaded
+    // state (the event-listener path is correct but fires asynchronously on
+    // some browser builds, leaving a brief visual gap on Fold7).
+    if (this.layerPanel) this.layerPanel.render();
+    if (this.historyPanel) this.historyPanel.render();
     this.scheduleRender();
   }
 
@@ -558,14 +575,35 @@ export class PainterApp {
   }
 
   async importJson(file: File): Promise<void> {
-    const text = await file.text();
-    this.applyState(ProjectCodec.decode(text));
-    void this.projectPanel.render();
+    try {
+      const text = await file.text();
+      const state = ProjectCodec.decode(text);
+      this.applyState(state);
+      void this.projectPanel.render();
+      this.flashStatus(`✓ JSON 불러오기 완료: ${file.name}`, 2000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.flashStatus(`⚠️ JSON 불러오기 실패: ${msg}`, 3500);
+      console.error("importJson failed", e);
+    }
   }
 
   async importPng(file: File): Promise<void> {
-    const layer = await importPngFile(file, this.projectWidth, this.projectHeight, realCanvasFactory, file.name);
-    this.history.execute(new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }), { stack: this.stack });
+    try {
+      const layer = await importPngFile(file, this.projectWidth, this.projectHeight, realCanvasFactory, file.name);
+      this.history.execute(
+        new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }),
+        { stack: this.stack }
+      );
+      // Ensure the canvas repaints even if the stack-change listener fires
+      // asynchronously or is momentarily behind.
+      this.scheduleRender();
+      this.flashStatus(`✓ PNG 가져오기: ${file.name}`, 2000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.flashStatus(`⚠️ PNG 가져오기 실패: ${msg}`, 3500);
+      console.error("importPng failed", e);
+    }
   }
 
   applyChromaKey(): void {
