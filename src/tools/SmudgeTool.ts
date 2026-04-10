@@ -27,11 +27,21 @@ export class SmudgeTool implements Tool {
     const px = Math.max(0, Math.min(layer.width - 1, Math.floor(p.x)));
     const py = Math.max(0, Math.min(layer.height - 1, Math.floor(p.y)));
     const sample = layer.getCtx().getImageData(px, py, 1, 1);
+    // Round-6: if the user starts smudging on an empty pixel, the tool
+    // would otherwise be a no-op forever (carry.a == 0 → nothing to drag).
+    // Fall back to the active brush color so the tool feels like a "color
+    // drag" even on a blank canvas — much more discoverable for new users.
+    let carry: RGBA;
+    if (sample.data[3]! > 0) {
+      carry = { r: sample.data[0]!, g: sample.data[1]!, b: sample.data[2]!, a: sample.data[3]! };
+    } else {
+      carry = { ...ctx.settings.color };
+    }
     this.drag = {
       layer,
       shadow: shadow.canvas,
       shadowCtx: shadow.ctx,
-      carry: { r: sample.data[0]!, g: sample.data[1]!, b: sample.data[2]!, a: sample.data[3]! },
+      carry,
       bbox: newBbox(p.x, p.y),
     };
   }
@@ -54,7 +64,18 @@ export class SmudgeTool implements Tool {
         const dyp = yy + y0 - py;
         if (dxp * dxp + dyp * dyp > r * r) continue;
         const i = (yy * w + xx) * 4;
-        if (region.data[i + 3] === 0) continue;
+        if (region.data[i + 3] === 0) {
+          // Empty pixel: stamp the carry color directly. The carry itself
+          // is NOT updated from this read (there's no real color here to
+          // pick up), so the "dragged" color stays consistent across the
+          // empty stretch.
+          if (drag.carry.a === 0) continue;
+          region.data[i] = drag.carry.r;
+          region.data[i + 1] = drag.carry.g;
+          region.data[i + 2] = drag.carry.b;
+          region.data[i + 3] = drag.carry.a;
+          continue;
+        }
         const here: RGBA = { r: region.data[i]!, g: region.data[i + 1]!, b: region.data[i + 2]!, a: region.data[i + 3]! };
         const blended = Color.lerp(here, drag.carry, 0.5);
         region.data[i] = blended.r;

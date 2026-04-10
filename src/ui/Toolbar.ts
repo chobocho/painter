@@ -13,7 +13,8 @@ export class Toolbar {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "tool-btn" + (t.id === activeId ? " active" : "");
-      btn.title = t.shortcut ? `${t.label} (${t.shortcut})` : t.label;
+      const shortcut = t.shortcut ? ` (${t.shortcut})` : "";
+      btn.title = `${t.label}${shortcut}\n${t.description}`;
       btn.dataset["toolId"] = t.id;
       const ico = document.createElement("span");
       ico.className = "tool-icon";

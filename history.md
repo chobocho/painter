@@ -698,3 +698,125 @@ if (c.a > 0) {
 
 다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 127` 확인 후 작업 시작 권장.
 
+---
+
+## 2026-04-10 — Round 6: 그라데이션 connected region, smudge 발견 가능성, 전체 디자인 리뷰
+
+### 사용자 보고
+
+1. 테스트 케이스를 더 보완해야 한다.
+2. **전체 디자인 리뷰**를 해 봐라.
+3. 그라데이션이 클릭한 영역에서만 동작해야 할 것 같은데 전체 영역에 영향을 준다.
+4. **smudge 기능이 뭐야?** 동작을 안 하는 것 같다.
+5. README/history.md 한글 업데이트.
+
+### Round 6 · 코디네이터 사전 점검
+
+- `git push --dry-run origin master` 정상.
+- master 127/127 통과, `BUILD OK`.
+- 사용자 보고 3·4를 코드에서 직접 확인.
+
+### Round 6 · 진단
+
+#### 보고 3 · 그라데이션이 전체 영역에 영향
+
+`src/tools/GradientTool.ts:preview()` 확인. Round 5에서 `region.data[i + 3] === 0`인 픽셀은 건너뛰도록 했지만, **그건 alpha > 0인 모든 픽셀에 적용한다는 뜻**이라 화면에 도형이 여러 개 있으면 전부 그라데이션으로 칠해짐. 사용자가 원하는 동작은 디럭스 페인트와 동일 — **클릭한 점이 속한 connected region(연결된 영역)만**. fill bucket과 같은 flood-fill 알고리즘이 필요.
+
+#### 보고 4 · smudge 동작 안 함 ("기능이 뭐야?")
+
+`src/tools/SmudgeTool.ts` 확인. 두 가지 결함:
+
+1. `if (region.data[i + 3] === 0) continue;` — 빈 픽셀에는 절대 적용 안 함.
+2. `onPointerDown`에서 sample 픽셀이 빈 픽셀이면 `carry.a = 0`이 되어 `Color.lerp(here, carry, 0.5)`가 호출되어도 carry는 빈 값이라 효과 없음.
+
+결과적으로 **빈 캔버스에서 smudge 도구를 선택하고 클릭하면 아무 일도 안 일어남**. 신규 사용자는 도구가 무엇을 하는지 알 길이 없어 "동작 안 함" 또는 "기능이 뭐야?"로 인식.
+
+이건 단순 코드 버그가 아니라 **발견 가능성(discoverability)** 문제. UI 어디에도 도구 설명이 없음. 도구 라벨은 영문(`Pencil`, `Eraser`, …)이고 툴팁도 라벨만 반복.
+
+#### 디자인 리뷰 발견 사항
+
+- **언어 불일치**: brush controls 라벨은 한글(`굵기`, `허용`, …)인데 도구 라벨은 영문. 사용자가 한국인인데 도구 이름이 다 영문.
+- **status bar(footer) 비어있음**: 그리드에 영역만 잡혀 있고 텍스트가 없음. 활성 도구 안내에 쓸 수 있는 아주 좋은 자리.
+- **툴팁에 설명 없음**: `btn.title = t.label`만 설정 — 라벨을 다시 보여주는 것뿐. 도구가 무엇을 하는지는 어디에도 없음. smudge처럼 추상 개념일수록 치명적.
+- **`tools/ToolHelpers.ts`가 사용 안 됨**: Round 4에서 `StrokeUtil.ts`로 대체된 후 import하는 곳 0개. 죽은 코드.
+
+### Round 6 · 기획 에이전트
+
+다섯 갈래로 수정:
+
+1. **GradientTool: scanline flood fill 마스크**
+   - `onPointerDown`에서 클릭점을 시드로 마스크 생성. fill bucket과 동일한 알고리즘 + 동일한 `tolerance` 슬라이더 사용.
+   - 마스크의 bbox만 commit해서 PixelEditCommand 페이로드 최소화.
+   - `preview`는 마스크 안 픽셀만 그라디언트로 칠함. 알파는 보존.
+2. **SmudgeTool: 발견 가능성**
+   - `onPointerDown`에서 sample이 빈 픽셀이면 `settings.color`로 carry 초기화 (fallback).
+   - 이동 중 빈 픽셀 만나면 carry 색을 그대로 stamp (carry는 갱신 안 함 — 빈 영역에서는 색을 가져올 게 없으니까).
+   - 결과: 빈 캔버스에서 smudge 시작 → 현재 브러시 색으로 brush 모양 그리기. 색 있는 영역에 가면 자연스럽게 섞임.
+3. **언어 일관성 + 발견 가능성**
+   - `ToolDescriptor`에 `description: string` 필드 추가.
+   - `ToolRegistry.register(id, tool, label, shortcut, icon, description)`로 시그니처 변경.
+   - 19개 도구 모두 한글 라벨 + 한 줄 한글 설명.
+   - `Toolbar`가 `title`에 `label (단축키)\n설명` 두 줄로 출력.
+4. **status bar 활용**
+   - `PainterApp.setActiveTool`이 `updateStatusBar()` 호출.
+   - footer에 `아이콘 라벨 (단축키) — 설명` 표시.
+   - boot 시점에도 호출해서 첫 진입에 빈 footer 안 보이게.
+5. **죽은 코드 정리**
+   - `tools/ToolHelpers.ts` 삭제.
+6. **회귀 테스트**
+   - GradientTool: 분리된 두 도형 중 하나만 클릭 → 다른 하나 unchanged
+   - GradientTool: 빈 영역 클릭 → 빈 영역만 (둘러싼 도형 unchanged)
+   - GradientTool: 단일 영역 → 그라디언트 시작/끝 색상 검증
+   - GradientTool: tolerance=0 → 인접 색 다른 영역 unchanged
+   - GradientTool: tolerance=64 → 인접 색 다른 영역 함께 칠해짐
+   - SmudgeTool: 빈 캔버스에서 시작 → 브러시 색으로 그려짐
+   - SmudgeTool: 색 있는 점에서 시작 → 빈 영역으로 드래그 → carry 색이 stamp됨
+   - SmudgeTool: 한 stroke = 한 history command
+   - 디자인 리뷰: 19개 도구 모두 한글 label/description/icon, getDescriptor 동작
+   - 디자인 리뷰: gradient/eyedropper description이 새 계약을 반영
+
+### Round 6 · 개발 에이전트
+
+수정한 파일:
+
+- `src/tools/GradientTool.ts` — 전체 재작성. `buildFloodMask()` 헬퍼 (scanline flood fill, RGBA Euclidean 거리 + tolerance²×4 제곱 비교). `DragState.mask: Uint8Array`. `onPointerDown`에서 마스크 생성 + bbox 계산. `preview`는 마스크 안 픽셀만 칠함.
+- `src/tools/SmudgeTool.ts` — `onPointerDown`에 빈 픽셀 fallback. `onPointerMove`에서 빈 픽셀 만나면 carry 색을 stamp (carry는 갱신 안 함). 주석으로 의도 명시.
+- `src/tools/ToolRegistry.ts` — `ToolDescriptor.description: string` 추가. `register()` 시그니처에 description 매개변수. `getDescriptor(id)` 메서드. 19개 도구 모두 한글 라벨 + 설명. (`pencil → 펜슬`, `eraser → 지우개`, `gradient → 그라디언트`, `smudge → 문지르기`, …)
+- `src/ui/Toolbar.ts` — `btn.title = "${label} (${shortcut})\n${description}"` (두 줄).
+- `src/app/PainterApp.ts`:
+  - `setActiveTool()`이 `updateStatusBar()` 호출.
+  - `updateStatusBar()`: `getElementById("status-bar")`를 찾아 활성 도구 디스크립터를 한 줄로 출력 (`아이콘 라벨 (단축키) — 설명`).
+  - boot 시 toolbar render 직후에도 한 번 호출.
+- `src/style.css` — `#status-bar` 색상/폰트 크기 키움 (`color: #cfcfd6`, `font-size: 12px`), `text-overflow: ellipsis`.
+- `src/tools/ToolHelpers.ts` — **삭제** (Round 4 이후 사용 안 됨).
+- `src/test/round6.test.ts` — **신규** 11개 회귀 케이스.
+- `src/test/main.ts` — `round6.test.js` import.
+
+### Round 6 · 검증 에이전트
+
+첫 실행: **135/137 통과**. 두 실패 모두 새 round-6 테스트의 어설션 결함.
+
+1. **`tolerance bridges two regions`** — 같은 `it` 안에서 두 번 그라데이션을 실행했는데 첫 번째가 left half를 다양한 색(검정→흰색)으로 칠하면서 두 번째 호출의 seed 픽셀이 검정이 됨. 그러면 검정이 시드인 connected region은 검정 근처 픽셀만 포함하고 110(원래 right half)에는 도달 못 함. 테스트를 두 개의 별도 `it`으로 분리하고 각 it가 fresh layer로 시작하게 수정.
+2. **`getDescriptor returns the right entry by id`** — `description.includes("문지")`로 검증했는데 description은 "픽셀을 **문질**러 색을 섞습니다"라 "문지"가 아니라 "문질". Korean은 음절 단위 별개 코드포인트이므로 "문지"와 "문질"은 다른 문자열. 어설션을 라벨 정확 비교 + Hangul 정규식으로 변경.
+
+수정 후: **138/138 통과 (~70ms)**.
+
+### Round 6 · 빌드 / 배포
+
+`./build.sh` 정상: 138/138 + `BUILD OK`.
+
+### Round 6 · 코디네이터 인계
+
+이번 라운드 user-visible 변경:
+
+- **그라디언트가 클릭한 영역만 칠합니다.** 두 개 분리된 도형이 있을 때 한쪽 클릭 → 그쪽만 그라디언트. 다른 쪽은 그대로. 알파 보존이라 가장자리 부드러움 유지.
+- **smudge가 빈 캔버스에서도 동작합니다.** 빈 픽셀에서 시작하면 현재 브러시 색을 carry로 잡고, 빈 영역을 지나갈 때 그 색을 그대로 찍어 brush처럼 동작. 색 있는 영역에 닿으면 자연스럽게 섞임.
+- **모든 도구가 한글 라벨 + 한글 설명**: 펜슬, 지우개, 직선, 사각형, 채운 사각형, 정사각형, 채운 정사각형, 타원, 채운 타원, 원, 채운 원, 삼각형, 채운 삼각형, 스프레이, 채우기, 그라디언트, 스포이드, **문지르기**, 패턴.
+- **status bar(footer)에 활성 도구 표시**: 아이콘 + 라벨 + 단축키 + 한 줄 설명. 처음 사용자도 무엇을 골랐는지 즉시 알 수 있음. 도구 버튼 툴팁에도 같은 정보가 두 줄로 표시.
+- 죽은 코드 `tools/ToolHelpers.ts` 삭제.
+- 테스트 127 → 138 (+11). 빌드 374K.
+
+가장 중요한 교훈: **사용자가 "기능이 뭐야?"라고 물으면 코드 버그가 아니라 발견 가능성(discoverability) 문제다.** UI 어딘가에 도구가 무엇을 하는지 한 줄로 보여줘야 한다. status bar + 툴팁 + 한글 라벨 + 빈 캔버스에서도 visible 동작이 같이 가야 함.
+
+다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 138` 확인 후 작업 시작 권장.
+

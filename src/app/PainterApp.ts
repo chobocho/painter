@@ -127,6 +127,7 @@ export class PainterApp {
 
     this.toolbar = new Toolbar(root.querySelector("#tool-area") as HTMLElement, this.registry, (id) => this.setActiveTool(id));
     this.toolbar.render(this.activeToolId);
+    this.updateStatusBar();
 
     this.palette = new Palette(root.querySelector("#palette-area") as HTMLElement, (c) => { this.settings.color = c; });
     this.palette.render();
@@ -284,6 +285,15 @@ export class PainterApp {
     if (!this.registry.get(id)) return;
     this.activeToolId = id;
     this.toolbar.setActive(id);
+    this.updateStatusBar();
+  }
+
+  private updateStatusBar(): void {
+    const desc = this.registry.getDescriptor(this.activeToolId);
+    const el = document.getElementById("status-bar");
+    if (!el || !desc) return;
+    const sc = desc.shortcut ? ` (${desc.shortcut})` : "";
+    el.textContent = `${desc.icon}  ${desc.label}${sc} — ${desc.description}`;
   }
 
   private toolContext(): ToolContext {
