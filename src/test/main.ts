@@ -17,6 +17,7 @@ import "./integration.test.js";
 import "./ui.test.js";
 import "./round5.test.js";
 import "./round6.test.js";
+import "./round7.test.js";
 
 import { run } from "./runner.js";
 run();

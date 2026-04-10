@@ -169,6 +169,7 @@ export class GradientTool implements Tool {
       for (let x = 0; x < layer.width; x++) {
         if (!drag.mask[y * layer.width + x]) continue;
         const i = (y * layer.width + x) * 4;
+        const wasEmpty = region.data[i + 3] === 0;
         const px = x - drag.start.x;
         const py = y - drag.start.y;
         let t = (px * dx + py * dy) / len2;
@@ -178,7 +179,11 @@ export class GradientTool implements Tool {
         region.data[i] = c.r;
         region.data[i + 1] = c.g;
         region.data[i + 2] = c.b;
-        // Preserve alpha so anti-aliased shape edges stay soft.
+        // Round-7: previously-empty pixels (alpha 0) take the gradient
+        // color's alpha so they actually become visible. Pixels that
+        // already had color keep their original alpha so anti-aliased
+        // shape edges stay soft.
+        if (wasEmpty) region.data[i + 3] = c.a;
       }
     }
     lctx.putImageData(region, 0, 0);

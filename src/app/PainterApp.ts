@@ -17,7 +17,8 @@ import { importPngFile } from "../io/PngImporter.js";
 import { removeBackground } from "../io/BackgroundRemover.js";
 import { Toolbar } from "../ui/Toolbar.js";
 import { Palette } from "../ui/Palette.js";
-import { LayerPanel } from "../ui/LayerPanel.js";
+import { LayerPanel, LAYER_LIMIT } from "../ui/LayerPanel.js";
+import { PATTERN_IDS } from "../tools/PatternBrush.js";
 import { HistoryPanel } from "../ui/HistoryPanel.js";
 import { ProjectPanel } from "../ui/ProjectPanel.js";
 import { Uid } from "../util/Uid.js";
@@ -70,8 +71,11 @@ export class PainterApp {
           </div>
           <div id="palette-area"></div>
           <div id="brush-controls">
-            <label>굵기 <input type="range" id="brush-size" min="1" max="64" value="${this.settings.brushSize}"></label>
+            <label id="brush-size-label">굵기 <input type="range" id="brush-size" min="1" max="64" value="${this.settings.brushSize}"></label>
             <label>허용 <input type="range" id="tolerance" min="0" max="128" value="${this.settings.tolerance}"></label>
+            <label id="pattern-select-label" style="display:none;">패턴
+              <select id="pattern-select"></select>
+            </label>
             <label><input type="checkbox" id="mirror-x"> 좌우대칭</label>
             <label><input type="checkbox" id="mirror-y"> 상하대칭</label>
           </div>
@@ -128,6 +132,7 @@ export class PainterApp {
     this.toolbar = new Toolbar(root.querySelector("#tool-area") as HTMLElement, this.registry, (id) => this.setActiveTool(id));
     this.toolbar.render(this.activeToolId);
     this.updateStatusBar();
+    this.updateBrushControls();
 
     this.palette = new Palette(root.querySelector("#palette-area") as HTMLElement, (c) => { this.settings.color = c; });
     this.palette.render();
@@ -209,6 +214,22 @@ export class PainterApp {
     // Brush size slider
     const brushSize = root.querySelector("#brush-size") as HTMLInputElement;
     brushSize.addEventListener("input", () => { this.settings.brushSize = parseInt(brushSize.value, 10); });
+
+    // Pattern brush type selector — only visible when the pattern tool is active.
+    const patternSelect = root.querySelector("#pattern-select") as HTMLSelectElement;
+    for (const id of PATTERN_IDS) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = id;
+      patternSelect.appendChild(opt);
+    }
+    if (PATTERN_IDS.length > 0) {
+      this.settings.patternId = PATTERN_IDS[0]!;
+      patternSelect.value = PATTERN_IDS[0]!;
+    }
+    patternSelect.addEventListener("change", () => {
+      this.settings.patternId = patternSelect.value;
+    });
     const tol = root.querySelector("#tolerance") as HTMLInputElement;
     tol.addEventListener("input", () => { this.settings.tolerance = parseInt(tol.value, 10); });
     const mx = root.querySelector("#mirror-x") as HTMLInputElement;
@@ -262,11 +283,11 @@ export class PainterApp {
     } else {
       this.stack.reset([], w, h, null);
     }
-    const base = new Layer({ name: "Background", width: w, height: h, factory: realCanvasFactory });
+    const base = new Layer({ name: "배경", width: w, height: h, factory: realCanvasFactory });
     base.getCtx().fillStyle = "#ffffff";
     base.getCtx().fillRect(0, 0, w, h);
     this.stack.add(base);
-    const draw = new Layer({ name: "Layer 1", width: w, height: h, factory: realCanvasFactory });
+    const draw = new Layer({ name: "레이어 1", width: w, height: h, factory: realCanvasFactory });
     this.stack.add(draw);
     this.stack.setActive(draw.id);
     if (!this.history) {
@@ -286,6 +307,44 @@ export class PainterApp {
     this.activeToolId = id;
     this.toolbar.setActive(id);
     this.updateStatusBar();
+    this.updateBrushControls();
+  }
+
+  /** Round-7: brush-size label adapts per tool category so the user can
+   *  see what the slider actually controls. Also toggles the pattern
+   *  picker visibility. */
+  private updateBrushControls(): void {
+    const labels: Record<string, string> = {
+      pencil: "굵기",
+      eraser: "굵기",
+      line: "굵기",
+      rect: "굵기", "rect-filled": "굵기",
+      square: "굵기", "square-filled": "굵기",
+      ellipse: "굵기", "ellipse-filled": "굵기",
+      circle: "굵기", "circle-filled": "굵기",
+      triangle: "굵기", "triangle-filled": "굵기",
+      spray: "범위",
+      pattern: "크기",
+      smudge: "굵기",
+    };
+    const sliderLabel = document.getElementById("brush-size-label");
+    if (sliderLabel) {
+      const word = labels[this.activeToolId] ?? "굵기";
+      const slider = sliderLabel.querySelector ? sliderLabel.querySelector("input") : null;
+      sliderLabel.textContent = word + " ";
+      if (slider) sliderLabel.appendChild(slider);
+    }
+    const patternLabel = document.getElementById("pattern-select-label");
+    if (patternLabel) {
+      patternLabel.style.display = this.activeToolId === "pattern" ? "" : "none";
+    }
+  }
+
+  private flashStatus(msg: string, ms: number = 1500): void {
+    const el = document.getElementById("status-bar");
+    if (!el) return;
+    el.textContent = msg;
+    setTimeout(() => this.updateStatusBar(), ms);
   }
 
   private updateStatusBar(): void {
@@ -313,8 +372,13 @@ export class PainterApp {
   }
 
   private addLayer(): void {
-    const layer = new Layer({ name: `Layer ${this.stack.size() + 1}`, width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
+    if (this.stack.size() >= LAYER_LIMIT) {
+      this.flashStatus(`⚠️  최대 ${LAYER_LIMIT}개 레이어까지 만들 수 있습니다`, 2500);
+      return;
+    }
+    const layer = new Layer({ name: `레이어 ${this.stack.size() + 1}`, width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
     this.history.execute(new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }), { stack: this.stack });
+    this.flashStatus(`✓ 레이어 추가 (${this.stack.size()}/${LAYER_LIMIT})`, 1200);
   }
 
   private removeLayer(id: string): void {

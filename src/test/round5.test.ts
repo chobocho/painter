@@ -79,17 +79,22 @@ describe("GradientTool: clips to existing pixels (issue 5)", () => {
     assertTrue(right.r > 200, `right edge near gradient end, got r=${right.r}`);
   });
 
-  it("blank layer + gradient produces no pixels (no blanket fill)", () => {
+  it("blank layer + gradient fills the whole layer (it's one big empty connected region)", () => {
+    // Round-5 originally asserted "no effect" here, but the round-7 user
+    // contract is "the gradient should also work on empty shapes". A blank
+    // canvas is just one giant empty connected region, so flood-filling it
+    // is exactly what the user wants. See round7.test.ts for the explicit
+    // empty-canvas case.
     const { ctx, layer } = freshCtx(16);
+    ctx.settings.gradientStops = [
+      { stop: 0, color: { r: 200, g: 0, b: 0, a: 255 } },
+      { stop: 1, color: { r: 0, g: 0, b: 200, a: 255 } },
+    ];
     const tool = new GradientTool();
     tool.onPointerDown(pointer(0, 0), ctx);
-    tool.onPointerUp(pointer(15, 15), ctx);
-    // Every pixel was transparent before; gradient must leave them alone.
-    for (let y = 0; y < 16; y += 4) {
-      for (let x = 0; x < 16; x += 4) {
-        assertEqual(alphaAt(layer, x, y), 0, `pixel (${x},${y}) should be untouched`);
-      }
-    }
+    tool.onPointerUp(pointer(15, 0), ctx);
+    assertTrue(alphaAt(layer, 0, 0) > 0, "left edge should be visible after gradient on empty");
+    assertTrue(alphaAt(layer, 15, 0) > 0, "right edge should be visible after gradient on empty");
   });
 
   it("preserves the original alpha (anti-aliased edges stay soft)", () => {

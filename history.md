@@ -820,3 +820,182 @@ if (c.a > 0) {
 
 다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 138` 확인 후 작업 시작 권장.
 
+---
+
+## 2026-04-10 — Round 7: TDD 워크플로 적용 — 레이어 선택, 5개 제한, 빈 도형 그라데이션, 패널 한글화
+
+### 사용자 보고
+
+1. 테스트 케이스를 더 보완해야 한다.
+2. 그라데이션이 빈 도형에서도 동작해야 한다.
+3. 스프레이 크기 조절 기능이 없다.
+4. 패턴은 어떻게 동작하는가, 크기 조절이 되는가.
+5. 히스토리가 전혀 기록이 안 되는 것 같다.
+6. 레이어 선택이 잘 안 된다.
+7. 레이어 이동이 잘 되는가.
+8. 레이어 추가가 안 되는 것 같다, 최대 5개까지.
+9. README 한글 업데이트.
+10. **앞으로 "설계 우선 → 테스트 케이스 추가 → 구현 → 검증" 순서로 진행해라.**
+
+### Round 7 · 코디네이터 사전 점검
+
+- `git push --dry-run origin master` 정상.
+- master 138/138 통과, `BUILD OK`.
+- 사용자가 명시적으로 TDD 워크플로를 요구. 이번 라운드는 **테스트가 먼저 실패하는 것을 보고**, 그 다음 구현으로 통과시키는 방식으로 진행.
+
+### Round 7 · 진단 (관리 에이전트)
+
+7가지 결함을 코드에서 직접 추적.
+
+#### 보고 6 · 레이어 선택 안 됨
+
+`src/ui/LayerPanel.ts:88` 결정적인 한 줄:
+
+```ts
+nameEl.addEventListener("click", (e) => e.stopPropagation());
+```
+
+레이어 이름 input이 `flex: 1`로 row 폭의 대부분을 차지. 사용자가 row 어디를 누르려고 해도 거의 항상 input 위를 누르게 됨. input click → `stopPropagation` → row click 발화 안 됨 → `onSelect` 호출 안 됨. **이게 "레이어 선택이 잘 안 된다"의 근본 원인.**
+
+#### 보고 8 · 레이어 추가 안 됨
+
+`+` 버튼은 28×28 px에 영문 title("New layer"). 패널 헤더 우측 끝. 사용자가 발견 못 함. 또한 5개 제한이 아예 없어서 무한 추가됨.
+
+#### 보고 5 · 그라데이션 빈 도형
+
+Round 6에서 connected region 마스크는 적용했지만, 마스크 안 픽셀이 alpha=0이면 그라데이션 RGB만 칠하고 alpha를 보존(0)했음. 그러면 빈 도형 안에 그라데이션을 적용해도 alpha=0이라 보이지 않음. 사용자 의도: **이전에 빈 픽셀이었으면 그라데이션 색의 alpha를 적용해서 visible하게**.
+
+#### 보고 3 · 스프레이/패턴 크기, 패턴 동작
+
+스프레이/패턴 모두 `brushSize`로 영역 조절. 메뉴 바 슬라이더 라벨이 항상 "굵기"라 사용자는 같은 슬라이더가 스프레이/패턴에도 적용됨을 모름. 패턴 종류(dots / hatch / cross)는 코드에는 있지만 선택 UI 없음.
+
+#### 보고 5 · 히스토리 안 기록
+
+코드는 round 4 이후 통합 테스트 통과 (`pointerleave` 제거 + 통합 테스트 13개). 사용자가 보는 것은 시각 피드백 부족 + 다른 결함(레이어 선택/추가)이 같이 와서 혼동. → status bar에 변화 flash 메시지 추가 + 사용자 시나리오 통합 회귀 테스트.
+
+#### 디자인 리뷰 (관리 에이전트 추가 발견)
+
+`LayerPanel`/`ProjectPanel`이 모두 영문(`Layers`, `Project`, `New`, `Save`, `Load JSON`, `Import PNG`, `Remove BG` 등). Round 6에서 도구는 한글화했지만 패널 한글화는 누락.
+
+### Round 7 · 기획 에이전트 (설계)
+
+사용자 요구 13번에 따라 설계를 먼저 정리.
+
+| 보고 | 수정 |
+|---|---|
+| 9. 레이어 선택 | input을 `readonly`로 시작, click이 row select 트리거 (stopPropagation 제거), dblclick으로 편집 모드, blur/Enter에서 readonly 복귀 |
+| 11. 레이어 추가 + 5개 제한 | + 버튼 한글 라벨 `+ 새 레이어` + accent 색상 + 5개일 때 `disabled`, `PainterApp.addLayer`가 5개 거부 + status flash, 라벨 `레이어 (n/5)` |
+| 10. 레이어 이동 검증 | 통합 테스트로 ↑↓ 동작 확인 (이미 PainterApp에 wired) |
+| 5. 그라데이션 빈 도형 | preview에서 마스크 안 픽셀이 원래 빈 픽셀이면 `region.data[i+3] = c.a`, 색이 있던 픽셀은 알파 보존 |
+| 6. 스프레이 크기 | brush-size 라벨 동적 변경 (`굵기` ↔ `범위` ↔ `크기`), `setActiveTool`에서 호출 |
+| 7. 패턴 동작 + 크기 | 패턴 종류 dropdown을 메뉴 바에 추가, 패턴 도구 활성 시만 visible |
+| 8. 히스토리 안 기록 | status bar flash (`flashStatus(msg, ms)` 헬퍼) — 레이어 추가 시 `✓ 레이어 추가 (n/5)` 1.2초, 5개 거부 시 `⚠️ 최대 5개...` 2.5초 |
+| 12. README/history.md | Round 7 한글 |
+| 패널 영문 | LayerPanel + ProjectPanel 모두 한글 |
+| 모의 DOM 한계 | LayerPanel UI를 단위 테스트하려면 진짜 click bubble이 가능한 모의 DOM이 필요 → `mocks/MiniDom.ts` 신규 |
+
+### Round 7 · 검증 에이전트 (테스트 먼저)
+
+`mocks/MiniDom.ts` 작성: parent/child 트리 + 진짜 listener 저장 + bubble propagation을 가진 `MiniElement`. `appendChild`가 parentNode 설정, `dispatchEvent`가 capture된 이벤트를 부모로 bubble. `stopPropagation`이 cancelBubble을 set.
+
+`test/round7.test.ts` 작성. 11개 회귀 케이스 모두 **현재 (round 6) 코드에서 실패**해야 함:
+
+- LayerPanel: row click → onSelect (5개)
+  - row 자체 click
+  - **name input click도 onSelect 트리거** (round-6 input이 클릭을 먹는 것 검증)
+  - name input은 `readOnly: true`로 시작
+  - dblclick → readOnly false
+  - blur → readOnly true
+- LayerPanel: 5개 제한 + 한글 헤더 (4개)
+  - 헤더에 "레이어" + "n/5" 포함
+  - 5개일 때 `.layer-add-btn` disabled
+  - 4개 이하일 때 enabled
+  - + 버튼 클릭이 onAdd 호출
+- GradientTool: 빈 레이어 visible (2개)
+  - 빈 레이어 + 그라데이션 → 마스크 안 픽셀 alpha > 0
+  - 색 있던 픽셀 → 알파 보존
+
+첫 실행: 11개 새 테스트 중 9개 실패 (예상). 두 개는 `MiniElement` 초기화 미스 (`querySelectorAll`이 row를 못 찾음)로 실패. **회귀 테스트가 실제 결함을 잡고 있음을 확인**.
+
+### Round 7 · 개발 에이전트 (구현)
+
+#### `mocks/MiniDom.ts` 수정
+`className` 필드를 getter/setter로 바꿔 `_classes` Set과 동기화. 이전에는 plain 문자열이라 `classList.contains`가 항상 false 반환 → `querySelectorAll(".layer-row")`가 0개 매칭.
+
+#### `src/ui/LayerPanel.ts` 재작성
+- `LAYER_LIMIT = 5` 상수 export.
+- `nameEl.readOnly = true`로 시작. `dblclick`에서 `readOnly = false`. `blur`에서 `readOnly = true` + 변경 사항 있으면 onRename. **click stopPropagation 제거** → 클릭이 row로 bubble → onSelect 발화.
+- 헤더: `▼/▶` collapse + `.panel-title "레이어 (n/5)"` + `.layer-add-btn "+ 새 레이어"` accent 색 + size === LAYER_LIMIT일 때 disabled.
+- 모든 button title 한글 (`숨기기 / 보이기 / 두 번 클릭하여 이름 변경 / 투명도 / 위로 / 아래로 / 삭제`).
+
+#### `src/app/PainterApp.ts` 수정
+- `import { LayerPanel, LAYER_LIMIT } from`, `import { PATTERN_IDS } from "../tools/PatternBrush.js"`.
+- innerHTML에 `#brush-size-label` (id), `#pattern-select-label` (display:none 시작), `<select id="pattern-select">`.
+- `boot()`에서 `patternSelect`를 `PATTERN_IDS`로 채우고 `change`에서 `settings.patternId` 갱신.
+- `setActiveTool`이 `updateBrushControls()` 호출.
+- `updateBrushControls()`: 활성 도구 id로 `굵기 / 범위 / 크기` 라벨 결정, slider input 자식 보존하면서 텍스트 갱신. 패턴이면 `#pattern-select-label.style.display = ""`, 아니면 `none`.
+- `flashStatus(msg, ms)` 헬퍼: footer에 메시지 표시 후 `setTimeout`으로 `updateStatusBar()` 복귀.
+- `addLayer()`가 `stack.size() >= LAYER_LIMIT`일 때 `flashStatus("⚠️ 최대 5개...")` + return. 정상 추가 시 `flashStatus("✓ 레이어 추가 (n/5)")`.
+- `newProjectInternal`의 `Background` → `배경`, `Layer 1` → `레이어 1`.
+
+#### `src/tools/GradientTool.ts` preview 수정
+```ts
+const wasEmpty = region.data[i + 3] === 0;
+// ... gradient color
+region.data[i] = c.r;
+region.data[i + 1] = c.g;
+region.data[i + 2] = c.b;
+if (wasEmpty) region.data[i + 3] = c.a;
+```
+빈 픽셀은 그라데이션 색 alpha 적용, 색 있던 픽셀은 보존.
+
+#### `src/ui/ProjectPanel.ts` 한글화
+- `Project → 프로젝트` (`.panel-title`로 wrapping), `New → 새 프로젝트`, `Save → 저장`, `PNG↓ → PNG ↓`, `JSON↓ → JSON ↓`, `Load JSON → JSON 불러오기`, `Import PNG → PNG 가져오기`, `Remove BG → 배경 제거`. 모든 버튼에 한글 title 추가.
+- 프로젝트 목록 비어있을 때 `저장된 프로젝트가 없습니다` empty state.
+
+#### `src/style.css` 강화
+- `.layer-row`: `border-left: 3px solid` accent strip, `:hover` 배경, `.active` 배경 변경 + box-shadow inset 1px accent (사용자가 활성 레이어를 즉시 알 수 있게).
+- `.layer-row .layer-name`: readonly일 때 cursor:pointer, `:not([readonly])`일 때 cursor:text + accent outline.
+- `.layer-add-btn`: accent 배경, 80px min-width, `+ 새 레이어` 한글 라벨이 잘리지 않게 `white-space: nowrap`.
+- `.project-empty` 스타일.
+
+#### Round 5 테스트 갱신
+
+Round 5의 `blank layer + gradient produces no pixels` 테스트는 round 7 사용자 계약과 모순. 빈 캔버스 = 한 개의 빈 connected region이므로 round 7에서는 그라데이션이 그 안을 채워야 함. 테스트를 새 계약(`alphaAt > 0`)에 맞게 갱신.
+
+### Round 7 · 검증 에이전트 (실행)
+
+첫 실행 후 LayerPanel 수정 → `# pass 148 # fail 1` (그라데이션 빈 픽셀 한 개 남음).
+GradientTool 수정 → `# pass 148 # fail 1` (round 5의 옛 blanket-fill 거부 테스트가 새 계약과 충돌).
+Round 5 테스트 갱신 → **149/149 통과 (~200ms)**.
+
+빌드: `BUILD OK (382K)`.
+
+### Round 7 · 코디네이터 인계
+
+이번 라운드 user-visible 변경:
+
+- **레이어 선택이 항상 동작**합니다. row 어디를 눌러도 (이름 input 포함) 그 레이어가 활성화. 이름 변경은 두 번 클릭으로 편집 모드 진입.
+- **레이어 추가가 잘 보이고 한글로 표시**: `+ 새 레이어` accent 버튼. **5개 제한**: 5개일 때 버튼 비활성화 + 사용자가 6번째 시도하면 status bar에 `⚠️ 최대 5개...` 메시지 2.5초 표시. 정상 추가 시 `✓ 레이어 추가 (n/5)` 1.2초 표시.
+- **활성 레이어가 시각적으로 명확**: accent border-left strip + 배경 색 변경 + box-shadow inset.
+- **그라디언트가 빈 도형에서도 동작**: 외곽선만 있는 사각형 안을 클릭하면 안쪽 빈 영역만 그라디언트로 칠해짐 (alpha=255 적용). 색 있던 픽셀은 알파 보존(부드러운 가장자리).
+- **스프레이/패턴 크기 조절 자명**: 메뉴 바 슬라이더 라벨이 도구별로 자동 변경 (`굵기 / 범위 / 크기`).
+- **패턴 종류 선택**: 패턴 도구 선택 시 메뉴 바에 dropdown 등장 (dots / hatch / cross).
+- **status bar flash 메시지**: 레이어 추가/거부, 향후 다른 상태 변화에 활용 가능.
+- **`LayerPanel` + `ProjectPanel` 한글화 완료**.
+- 테스트 138 → 149 (+11). 빌드 374K → 382K.
+
+### TDD 워크플로 효과
+
+사용자가 명시한 "설계 → 테스트 → 구현 → 검증" 순서를 따른 결과:
+
+1. **설계 단계**가 명확한 결함 ↔ 수정 매핑 표를 만들어 중복 작업과 추측을 줄였음.
+2. **테스트 먼저** 단계가 round 7 회귀를 작성하면서 모의 DOM의 한계(`className` 동기화 결함)를 발견. 이걸 모의에서 고쳐서 향후 UI 테스트가 모두 가능해짐.
+3. **구현** 단계는 실패하는 테스트를 통과시키는 게 목표라 명확. "내가 fix했나?"가 아니라 "테스트가 통과하나?"로 검증.
+4. **검증** 단계가 round 5의 옛 테스트가 새 계약과 모순됨을 잡아냈고, 명시적으로 갱신함. 만약 TDD가 아니었다면 새 동작을 구현한 뒤 옛 테스트가 무효화된 채로 통과했을 것.
+
+가장 중요한 교훈:
+> **사용자가 "동작 안 한다"고 보고하면 거의 항상 (a) UI 영역을 가로채는 다른 요소이거나 (b) 시각 피드백 부족 — 두 가지 중 하나다.** Round 7의 보고 6/8/9는 모두 LayerPanel input의 stopPropagation 한 줄이 원인이거나 그것의 후속 영향이었다.
+
+다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 149` 확인 후 작업 시작.
+
