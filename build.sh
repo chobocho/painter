@@ -2,7 +2,7 @@
 # Build script for the Painter TS rewrite.
 # 1. Compile TypeScript
 # 2. Run the test suite (must pass)
-# 3. Stage HTML, CSS, JS, and image assets into release/
+# 3. Bundle JS + inline CSS into a single release/index.html
 
 set -euo pipefail
 
@@ -18,26 +18,28 @@ tsc
 echo "==> Running tests"
 node dist/src/test/main.js
 
-echo "==> Staging release/"
-mkdir -p release/js release/img
+echo "==> Bundling JS"
+mkdir -p release
+BUNDLE="$(mktemp)"
+trap 'rm -f "$BUNDLE"' EXIT
+npx --yes esbuild dist/src/app/main.js \
+  --bundle --format=iife --target=es2020 --platform=browser \
+  --log-level=warning \
+  > "$BUNDLE"
 
-# Copy entry HTML and CSS to the release root.
-cp src/index.html release/index.html
-cp src/style.css  release/style.css
+echo "==> Inlining into release/index.html"
+HTML="src/index.html" CSS="src/style.css" JS="$BUNDLE" OUT="release/index.html" node -e '
+const fs = require("fs");
+const html = fs.readFileSync(process.env.HTML, "utf8");
+const css  = fs.readFileSync(process.env.CSS,  "utf8");
+const js   = fs.readFileSync(process.env.JS,   "utf8");
+const out = html
+  .replace(/\s*<link\s+rel="stylesheet"[^>]*>\s*/i,
+           "\n    <style>\n" + css + "\n    </style>\n  ")
+  .replace(/\s*<script\b[^>]*><\/script>\s*/i,
+           "\n    <script>\n" + js + "\n    </script>\n  ");
+fs.writeFileSync(process.env.OUT, out);
+'
 
-# Copy image assets (legacy palette icons re-used by the new UI).
-if [ -d legacy/img ]; then
-  cp -r legacy/img/. release/img/
-fi
-
-# Copy compiled JS, mirroring the src tree under release/js, but exclude tests.
-cd dist/src
-find . -type f -name "*.js" -not -path "./test/*" | while read -r f; do
-  dest="$ROOT/release/js/$(echo "$f" | sed 's|^\./||')"
-  mkdir -p "$(dirname "$dest")"
-  cp "$f" "$dest"
-done
-cd "$ROOT"
-
-SIZE=$(du -sh release | cut -f1)
+SIZE=$(du -sh release/index.html | cut -f1)
 echo "==> BUILD OK ($SIZE)"
