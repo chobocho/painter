@@ -648,3 +648,43 @@ describe("리뷰 #5 — 그라디언트 미리보기 범위", () => {
     assertEqual(restored[1], 255);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #8 — 새 프로젝트 생성 후 좌표 매핑 오류 / 입력 검증 부재
+//
+// newProject 는 prompt 입력을 그대로 parseInt 해서 NaN·0·거대 값이 그대로
+// 캔버스 크기가 됐고, 취소를 눌러도 프로젝트가 새로 만들어졌다. 게다가
+// setProjectSize/refit 을 부르지 않아 크기가 다른 새 프로젝트에서는 포인터
+// 좌표가 어긋났다.
+// ---------------------------------------------------------------------------
+
+describe("리뷰 #8 — 프로젝트 크기 입력 검증", () => {
+  const parse = (AppModule as unknown as {
+    parseProjectSize?: (input: string | null, fallback: number) => number | null;
+  }).parseProjectSize;
+
+  it("정상 입력과 빈 입력을 처리한다", () => {
+    assertTrue(typeof parse === "function", "parseProjectSize 가 있어야 함");
+    assertEqual(parse!("800", 100), 800);
+    assertEqual(parse!("  640  ", 100), 640);
+    assertEqual(parse!("", 100), 100, "빈 입력은 기존 크기 유지");
+    assertEqual(parse!("640.7", 100), 640, "소수는 내림");
+  });
+
+  it("취소와 잘못된 값은 null 이다", () => {
+    assertTrue(typeof parse === "function", "parseProjectSize 가 있어야 함");
+    assertEqual(parse!(null, 100), null, "취소");
+    assertEqual(parse!("abc", 100), null, "숫자 아님");
+    assertEqual(parse!("0", 100), null, "0 불가");
+    assertEqual(parse!("-5", 100), null, "음수 불가");
+    assertEqual(parse!("NaN", 100), null);
+  });
+
+  it("지나치게 큰 값은 상한으로 자른다", () => {
+    assertTrue(typeof parse === "function", "parseProjectSize 가 있어야 함");
+    const max = (AppModule as unknown as { MAX_PROJECT_SIZE?: number }).MAX_PROJECT_SIZE;
+    assertTrue(typeof max === "number", "MAX_PROJECT_SIZE 가 있어야 함");
+    assertEqual(parse!("1000000000", 100), max);
+    assertEqual(parse!("1e9", 100), max);
+  });
+});

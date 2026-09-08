@@ -48,6 +48,25 @@ const realCanvasFactory: CanvasFactory = (w, h) => {
  * preview() 는 화면만 바꾸고, commit() 이 드래그 시작 전 값을 before 로 삼아
  * 커맨드를 만든다. 값이 그대로면 아무것도 기록하지 않는다.
  */
+/** 캔버스 한 변의 상한. 이보다 크면 브라우저가 캔버스 생성에 실패한다. */
+export const MAX_PROJECT_SIZE = 8192;
+
+/**
+ * 새 프로젝트 크기 입력을 검증한다.
+ * 취소(null)·숫자가 아님·0 이하는 모두 null 로 돌려 프로젝트를 만들지 않게 한다.
+ * 빈 입력은 기존 크기를 그대로 쓰고, 지나치게 큰 값은 상한으로 자른다.
+ */
+export function parseProjectSize(input: string | null, fallback: number): number | null {
+  if (input === null) return null;
+  const trimmed = input.trim();
+  if (trimmed === "") return fallback;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return null;
+  const i = Math.floor(n);
+  if (i < 1) return null;
+  return Math.min(i, MAX_PROJECT_SIZE);
+}
+
 export class OpacityDrag {
   private start: { id: string; opacity: number } | null = null;
 
@@ -93,6 +112,8 @@ export function pickRestoreJson(
 
 export class PainterApp {
   private opacityDrag = new OpacityDrag();
+  /** mount 에서 만든 캔버스 리핏 함수. 프로젝트 크기가 바뀌면 다시 불러야 한다. */
+  private refitCanvas: (() => void) | null = null;
   private projectId: string = Uid.next();
   private projectName: string = "Untitled";
   private createdAt: number = Date.now();
@@ -175,6 +196,7 @@ export class PainterApp {
       this.displayCanvas.resizeDisplay(cssW, cssH, window.devicePixelRatio || 1);
       this.scheduleRender();
     };
+    this.refitCanvas = fitCanvasToContainer;
     fitCanvasToContainer();
     new ResizeObserver(() => fitCanvasToContainer()).observe(canvasArea);
 
@@ -573,6 +595,8 @@ export class PainterApp {
     Object.assign(this.settings, state.settings);
     this.previewLayer = new Layer({ name: "Preview", width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
     if (this.displayCanvas) this.displayCanvas.setProjectSize(this.projectWidth, this.projectHeight);
+    // 크기만 바꾸고 리핏을 안 하면 화면이 늘어져 보이고 포인터 좌표가 어긋난다.
+    this.refitCanvas?.();
     // Panels may have been created before this restore; force-refresh them so
     // the layer list and history list are immediately in sync with the loaded
     // state (the event-listener path is correct but fires asynchronously on
@@ -586,13 +610,25 @@ export class PainterApp {
   }
 
   newProject(): void {
-    const w = parseInt(prompt("Width?", String(this.projectWidth)) ?? String(this.projectWidth), 10);
-    const h = parseInt(prompt("Height?", String(this.projectHeight)) ?? String(this.projectHeight), 10);
+    const wIn = prompt("가로 크기?", String(this.projectWidth));
+    if (wIn === null) return; // 취소하면 아무것도 만들지 않는다
+    const hIn = prompt("세로 크기?", String(this.projectHeight));
+    if (hIn === null) return;
+    const w = parseProjectSize(wIn, this.projectWidth);
+    const h = parseProjectSize(hIn, this.projectHeight);
+    if (w === null || h === null) {
+      this.flashStatus(`⚠️ 크기는 1~${MAX_PROJECT_SIZE} 사이의 숫자여야 합니다`, 3000);
+      return;
+    }
     this.projectId = Uid.next();
     this.projectName = "Untitled";
     this.createdAt = Date.now();
     if (this.autoSaver) this.autoSaver.setProjectId(this.projectId);
     this.newProjectInternal(w, h);
+    // 표시 캔버스에도 새 크기를 알려주고 다시 맞춘다. 빠뜨리면 크기가 다른
+    // 프로젝트에서 포인터 좌표가 그대로 어긋난다.
+    this.displayCanvas?.setProjectSize(w, h);
+    this.refitCanvas?.();
     this.scheduleRender();
     void this.saveProject();
   }

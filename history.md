@@ -104,6 +104,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 192 passed, 0 failed
 - **비고:** 64×64 기준 이동당 4096px → 16px. markDirty 도 bbox 로 축소.
 
+### [2026-09-08 05:14] 리뷰 #8 새 프로젝트 크기 검증·좌표 리핏
+- **기획:** `parseProjectSize()`로 입력 검증(취소·비숫자·0 이하 거부, 상한 8192 clamp), 생성/로드 후 `setProjectSize` + 리핏 호출.
+- **TC:** (정상) 정수·공백·소수 입력. (엣지) 취소(null), 문자열, 0, 음수, 1e9 상한 clamp.
+- **개발:** `src/app/PainterApp.ts`, `src/test/round10.test.ts`
+- **검증:** 195 passed, 0 failed
+- **비고:** prompt 문구를 한글로 통일. 취소 시 프로젝트를 만들지 않도록 변경.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries
