@@ -54,16 +54,26 @@ export class AutoSaver {
 
   async flushNow(): Promise<void> {
     if (!this.projectId) return;
+    const projectId = this.projectId;
+    // dirty 를 먼저 내린다. 직렬화와 IDB 쓰기 사이에 들어온 편집은 곧바로 다시
+    // dirty 로 올라와 다음 저장에 잡힌다. 예전처럼 await 뒤에 내리면 그 편집이
+    // "저장됨"으로 표시되어 다음 변경이 있을 때까지 통째로 유실됐다.
+    this.dirty = false;
     const payload: StoredAutoSave = {
-      id: this.projectId,
+      id: projectId,
       savedAt: Date.now(),
       projectJson: this.opts.serialize(),
     };
-    await this.store.putAutoSave(payload);
-    // 복원 대상도 함께 기록한다. 예전에는 명시적 저장(Ctrl+S)에서만 기록해서
-    // 자동 저장만 쓰는 사용자는 다음 실행에서 아무것도 복원되지 않았다.
-    await this.store.putMeta("lastOpenProjectId", this.projectId);
-    this.dirty = false;
+    try {
+      await this.store.putAutoSave(payload);
+      // 복원 대상도 함께 기록한다. 예전에는 명시적 저장(Ctrl+S)에서만 기록해서
+      // 자동 저장만 쓰는 사용자는 다음 실행에서 아무것도 복원되지 않았다.
+      await this.store.putMeta("lastOpenProjectId", projectId);
+    } catch (e) {
+      // 저장에 실패했으면 아직 저장되지 않은 상태다.
+      this.dirty = true;
+      throw e;
+    }
   }
 
   isDirty(): boolean { return this.dirty; }

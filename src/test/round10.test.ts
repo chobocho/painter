@@ -1213,3 +1213,50 @@ describe("리뷰 #16 — 변경 없는 레이어 재직렬화", () => {
     assertEqual(snap.opacity, 0.25);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #18 — 종료 시 저장 불완전
+//
+// flushNow 는 await 뒤에 dirty=false 로 만들어서, 저장이 진행되는 동안 들어온
+// 편집이 "저장됨"으로 표시되고 다음 변경이 있을 때까지 유실됐다.
+// ---------------------------------------------------------------------------
+
+describe("리뷰 #18 — 저장 중 들어온 편집", () => {
+  it("직렬화 이후에 생긴 변경은 dirty 로 남는다", async () => {
+    const store = await freshStore();
+    const stack = new LayerStack(8, 8, factory);
+    stack.add(new Layer({ width: 8, height: 8, factory }));
+    const history = new CommandHistory();
+    let serialized = 0;
+    const saver = new AutoSaver(store, stack, history, {
+      intervalMs: 999999,
+      serialize: () => {
+        serialized++;
+        // 직렬화가 끝난 직후(=저장이 진행되는 동안) 사용자가 한 획 더 그었다.
+        if (serialized === 1) stack.add(new Layer({ width: 8, height: 8, factory }));
+        return '{"version":"1"}';
+      },
+    });
+    saver.start("p1");
+    stack.add(new Layer({ width: 8, height: 8, factory })); // 최초 dirty
+    await saver.flushNow();
+    saver.stop();
+
+    assertTrue(saver.isDirty(), "저장 중 들어온 편집은 다음 저장 대상으로 남아야 함");
+  });
+
+  it("저장 중 아무 변경이 없으면 dirty 가 내려간다", async () => {
+    const store = await freshStore();
+    const stack = new LayerStack(8, 8, factory);
+    stack.add(new Layer({ width: 8, height: 8, factory }));
+    const saver = new AutoSaver(store, stack, new CommandHistory(), {
+      intervalMs: 999999,
+      serialize: () => '{"version":"1"}',
+    });
+    saver.start("p1");
+    stack.add(new Layer({ width: 8, height: 8, factory }));
+    await saver.flushNow();
+    saver.stop();
+    assertFalse(saver.isDirty(), "조용히 저장이 끝나면 깨끗해야 함");
+  });
+});

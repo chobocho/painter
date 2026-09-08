@@ -174,6 +174,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 228 passed, 0 failed
 - **비고:** README 기능표에서 '컬러 사이클링' 문구 제거. 테스트 1개 감소는 삭제된 기능의 테스트 제거분.
 
+### [2026-09-08 07:08] 리뷰 #18 저장 중 편집 유실·종료 경로 보강
+- **기획:** `flushNow`가 직렬화 전에 dirty 를 내리고 실패 시 되돌리도록 변경. 종료 경로에 `pagehide` 추가.
+- **TC:** (엣지) 직렬화 도중 레이어 추가 시 dirty 유지, 조용한 저장 후 dirty 해제.
+- **개발:** `src/storage/AutoSaver.ts`, `src/app/PainterApp.ts`, `src/test/round10.test.ts`
+- **검증:** 230 passed, 0 failed
+- **비고:** IDB 쓰기는 동기 실행이 불가능해 beforeunload 만으로는 보장 못 함 — visibilitychange/pagehide 에 의존.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

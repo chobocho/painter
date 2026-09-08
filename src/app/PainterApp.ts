@@ -406,6 +406,10 @@ export class PainterApp {
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") void this.autoSaver.flushNow();
     });
+    // 종료 경로. IDB 쓰기는 비동기라 beforeunload 만으로는 완료가 보장되지
+    // 않는다. 모바일에서 실제로 불리는 것은 visibilitychange(hidden) 과
+    // pagehide 이므로 셋 다 걸어 두고 가장 먼저 오는 것에 기댄다.
+    window.addEventListener("pagehide", () => { void this.autoSaver.flushNow(); });
     window.addEventListener("beforeunload", () => { void this.autoSaver.flushNow(); });
 
     this.stack.on("dirty", () => this.scheduleRender());
