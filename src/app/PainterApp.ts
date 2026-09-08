@@ -33,22 +33,6 @@ const realCanvasFactory: CanvasFactory = (w, h) => {
 };
 
 /**
- * 복원할 프로젝트 JSON 을 고른다. 자동 저장본과 명시 저장본 중 더 최근 것을
- * 쓴다. 예전에는 자동 저장본만 봐서, Ctrl+S 로 저장한 최신 상태가 있어도
- * 그보다 오래된 자동 저장본이 올라오는 경우가 있었다.
- */
-/**
- * 히스토리 커맨드에 넣을 레이어 스냅샷. 반드시 compact 로 만든다.
- * 옵션 없는 serialize() 는 비압축 base64(rawRGBA)를 만드는데, 1920×1280
- * 레이어 한 장이 약 13MB 문자열이고 브라우저 폴백 경로에서 인코딩·디코딩에
- * 각각 1.6초쯤 걸려 레이어 추가/삭제/PNG 가져오기가 그대로 멈춰 보였다.
- */
-/**
- * 투명도 슬라이더 드래그 한 번을 히스토리 항목 하나로 묶는다.
- * preview() 는 화면만 바꾸고, commit() 이 드래그 시작 전 값을 before 로 삼아
- * 커맨드를 만든다. 값이 그대로면 아무것도 기록하지 않는다.
- */
-/**
  * 레이어를 더 추가할 수 있는지. PNG 가져오기도 반드시 이걸 거쳐야 한다.
  * 예전에는 addLayer 에만 검사가 있어 PNG 로 제한을 우회할 수 있었다.
  */
@@ -80,6 +64,11 @@ export function parseProjectSize(input: string | null, fallback: number): number
   return Math.min(i, MAX_PROJECT_SIZE);
 }
 
+/**
+ * 투명도 슬라이더 드래그 한 번을 히스토리 항목 하나로 묶는다.
+ * preview() 는 화면만 바꾸고, commit() 이 드래그 시작 전 값을 before 로 삼아
+ * 커맨드를 만든다. 값이 그대로면 아무것도 기록하지 않는다.
+ */
 export class OpacityDrag {
   private start: { id: string; opacity: number } | null = null;
 
@@ -110,10 +99,21 @@ export class OpacityDrag {
   }
 }
 
+/**
+ * 히스토리 커맨드에 넣을 레이어 스냅샷. 반드시 compact 로 만든다.
+ * 옵션 없는 serialize() 는 비압축 base64(rawRGBA)를 만드는데, 1920×1280
+ * 레이어 한 장이 약 13MB 문자열이고 브라우저 폴백 경로에서 인코딩·디코딩에
+ * 각각 1.6초쯤 걸려 레이어 추가/삭제/PNG 가져오기가 그대로 멈춰 보였다.
+ */
 export function historySnapshot(layer: Layer): LayerSnapshot {
   return layer.serialize({ compact: true });
 }
 
+/**
+ * 복원할 프로젝트 JSON 을 고른다. 자동 저장본과 명시 저장본 중 더 최근 것을
+ * 쓴다. 예전에는 자동 저장본만 봐서, Ctrl+S 로 저장한 최신 상태가 있어도
+ * 그보다 오래된 자동 저장본이 올라오는 경우가 있었다.
+ */
 export function pickRestoreJson(
   auto?: { savedAt: number; projectJson: string },
   project?: { updatedAt: number; projectJson: string }

@@ -125,6 +125,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 201 passed, 0 failed
 - **비고:** 측정이 `restore()` 뒤에 있어 폰트가 10px 로 돌아가던 문제를 테스트가 잡아냄. 미사용 `canvas` 변수 제거.
 
+### [2026-09-08 05:46] 리뷰 #12 단축키 T 추가 및 한글 IME 대응
+- **기획:** SHORTCUTS 에 `t → tool:text` 추가. `e.key` 매칭 실패 시 `e.code`(물리 키)로 폴백.
+- **TC:** (정상) t/T, shift+R 은 기존 경로 유지. (엣지) IME 상태(ㅠ/KeyB, ㅋ+Ctrl/KeyZ), Process+BracketLeft/Right, 모르는 조합 null.
+- **개발:** `src/input/Shortcuts.ts`, `src/test/round10.test.ts`, `src/app/PainterApp.ts`(주석 위치 정정)
+- **검증:** 205 passed, 0 failed
+- **비고:** 연속 패치로 헬퍼 주석 3개가 함수에서 분리돼 있던 것을 제자리로 복구.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

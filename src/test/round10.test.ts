@@ -818,3 +818,41 @@ describe("리뷰 #11 — 오버레이 입력", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #12 — 단축키
+//
+//   * 글자 도구 T 가 레지스트리/README 에는 있는데 SHORTCUTS 에는 없었다.
+//   * e.key 로만 매칭해서 한글 IME 가 켜져 있으면(b 대신 ㅠ) 모든 단축키가
+//     동작하지 않았다 → e.code 폴백.
+// ---------------------------------------------------------------------------
+
+import { matchShortcut } from "../input/Shortcuts.js";
+
+const keyEvent = (over: Partial<{ key: string; code: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean }>) =>
+  ({ key: "", shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, ...over }) as any;
+
+describe("리뷰 #12 — 단축키", () => {
+  it("T 로 글자 도구를 고른다", () => {
+    assertEqual(matchShortcut(keyEvent({ key: "t" }))?.action, "tool:text");
+    assertEqual(matchShortcut(keyEvent({ key: "T" }))?.action, "tool:text");
+  });
+
+  it("한글 IME 상태에서도 code 로 매칭한다", () => {
+    assertEqual(matchShortcut(keyEvent({ key: "ㅠ", code: "KeyB" }))?.action, "tool:pencil");
+    assertEqual(matchShortcut(keyEvent({ key: "ㅋ", code: "KeyZ", ctrlKey: true }))?.action, "history:undo");
+    assertEqual(matchShortcut(keyEvent({ key: "ㅅ", code: "KeyT" }))?.action, "tool:text");
+  });
+
+  it("괄호 키도 code 로 폴백한다", () => {
+    assertEqual(matchShortcut(keyEvent({ key: "Process", code: "BracketLeft" }))?.action, "brush:dec");
+    assertEqual(matchShortcut(keyEvent({ key: "Process", code: "BracketRight" }))?.action, "brush:inc");
+  });
+
+  it("key 매칭이 먼저고, 모르는 조합은 null 이다", () => {
+    // shift+R 은 key 로 이미 맞는다 (code 폴백이 가로채면 안 된다)
+    assertEqual(matchShortcut(keyEvent({ key: "R", code: "KeyR", shiftKey: true }))?.action, "tool:rect-filled");
+    assertEqual(matchShortcut(keyEvent({ key: "ㅂ", code: "KeyQ" })), null);
+    assertEqual(matchShortcut(keyEvent({ key: "ㅂ" })), null);
+  });
+});
