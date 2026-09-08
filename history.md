@@ -160,6 +160,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 223 passed, 0 failed
 - **비고:** 이름 변경은 저장본 JSON 의 `meta.name` 까지 갱신. 열려 있던 프로젝트 삭제 시 `lastOpenProjectId` 도 정리.
 
+### [2026-09-08 06:45] 리뷰 #16 RLE 최악 케이스·직렬화 부하 개선
+- **기획:** RLE 가 raw 보다 크면 raw 로 폴백, 인코더를 `Uint8Array` 사전 할당으로 교체, 픽셀 revision 기반 직렬화 캐시 추가.
+- **TC:** (정상) 단색은 RLE 유지, 캐시 재사용. (엣지) 노이즈 레이어 raw 폴백+복원, 그린 뒤 캐시 무효화, 메타만 변경 시 최신값.
+- **개발:** `src/core/Layer.ts`, `src/test/round10.test.ts`
+- **검증:** 229 passed, 0 failed
+- **비고:** 1920×1280 노이즈 인코딩 실측 66ms / 힙 4MB (리뷰 측정 550ms / 500MB). 캐시는 `getCtx()` 호출 시 보수적으로 무효화.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

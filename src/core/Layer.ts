@@ -102,12 +102,26 @@ export class Layer {
     this.ctx = ctx;
   }
 
+  /** 픽셀이 바뀔 때마다 오르는 값. 직렬화 캐시 무효화에만 쓴다. */
+  private revision = 0;
+  private serializeCache: { revision: number; compact: boolean; snapshot: LayerSnapshot } | null = null;
+
   get width(): number { return this.canvas.width; }
   get height(): number { return this.canvas.height; }
   getCanvas(): CanvasLike { return this.canvas; }
-  getCtx(): Ctx2D { return this.ctx; }
+
+  /**
+   * 그리기용 컨텍스트. 넘겨주는 순간 픽셀이 바뀔 수 있다고 보고 직렬화 캐시를
+   * 버린다. 실제로 안 그렸어도 손해는 재직렬화 한 번뿐이고, 낡은 스냅샷을
+   * 저장하는 일은 절대 없다. 읽기 전용 경로(getPixels)는 캐시를 유지한다.
+   */
+  getCtx(): Ctx2D {
+    this.revision++;
+    return this.ctx;
+  }
 
   clear(x = 0, y = 0, w = this.width, h = this.height): void {
+    this.revision++;
     this.ctx.clearRect(x, y, w, h);
   }
 
@@ -116,6 +130,7 @@ export class Layer {
   }
 
   putPixels(img: { width: number; height: number; data: Uint8ClampedArray }, x: number, y: number): void {
+    this.revision++;
     let out: ImageData | { width: number; height: number; data: Uint8ClampedArray } = img;
     if (typeof ImageData !== "undefined" && !(img instanceof ImageData)) {
       out = new ImageData(img.data as any, img.width, img.height);
@@ -137,17 +152,32 @@ export class Layer {
   }
 
   serialize(opts: SerializeOpts = {}): LayerSnapshot {
+    const compact = !!opts.compact;
     const meta = this.cloneSnapshotMeta();
+    // 픽셀이 그대로면 지난 결과를 재사용한다. 자동 저장이 5초마다 모든 레이어를
+    // 다시 인코딩하던 비용이 여기서 사라진다. 메타(이름·투명도 등)는 캐시와
+    // 무관하게 바뀔 수 있으므로 항상 최신 값을 덮어씌운다.
+    const cached = this.serializeCache;
+    if (cached && cached.revision === this.revision && cached.compact === compact) {
+      return { ...cached.snapshot, ...meta };
+    }
+
     const img = this.ctx.getImageData(0, 0, this.width, this.height);
-    if (!opts.compact) {
-      return { ...meta, rawRGBA: encodeBase64(img.data) };
+    let snapshot: LayerSnapshot;
+    if (!compact) {
+      snapshot = { ...meta, rawRGBA: encodeBase64(img.data) };
+    } else if (isAllTransparent(img.data)) {
+      snapshot = { ...meta };
+    } else {
+      const rle = rleEncodeRGBA(img.data);
+      // 노이즈가 많은 레이어(스프레이·사진)는 런이 잘게 쪼개져 RLE 가 raw 의
+      // 1.5배까지 부푼다. 그럴 땐 raw 가 더 작다.
+      snapshot = rle.length < img.data.length
+        ? { ...meta, rleRGBA: encodeBase64(rle) }
+        : { ...meta, rawRGBA: encodeBase64(img.data) };
     }
-    // Compact path: detect blank, else RLE-compress.
-    if (isAllTransparent(img.data)) {
-      return { ...meta };
-    }
-    const rle = rleEncodeRGBA(img.data);
-    return { ...meta, rleRGBA: encodeBase64(rle) };
+    this.serializeCache = { revision: this.revision, compact, snapshot };
+    return snapshot;
   }
 
   static deserialize(snap: LayerSnapshot, factory: CanvasFactory): Layer {
@@ -188,8 +218,12 @@ function isAllTransparent(d: Uint8ClampedArray): boolean {
  * → ~40 records ≈ 240 bytes before base64, ~320 bytes after.
  */
 export function rleEncodeRGBA(data: Uint8ClampedArray): Uint8ClampedArray {
-  const out: number[] = [];
+  // 최악의 경우(모든 픽셀이 서로 다름) 픽셀 하나가 6바이트 레코드 하나가 된다.
+  // 그 크기로 한 번에 잡아 두면 JS number[] 를 쓸 때의 힙 부담(1920×1280 에서
+  // 약 500MB 측정)이 사라진다. O(n) 시간, O(n) 추가 메모리.
   const n = data.length;
+  const out = new Uint8ClampedArray(Math.ceil(n / 4) * 6);
+  let o = 0;
   let i = 0;
   while (i < n) {
     const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
@@ -200,10 +234,15 @@ export function rleEncodeRGBA(data: Uint8ClampedArray): Uint8ClampedArray {
       count++;
       j += 4;
     }
-    out.push((count >> 8) & 0xff, count & 0xff, r, g, b, a);
+    out[o++] = (count >> 8) & 0xff;
+    out[o++] = count & 0xff;
+    out[o++] = r;
+    out[o++] = g;
+    out[o++] = b;
+    out[o++] = a;
     i = j;
   }
-  return new Uint8ClampedArray(out);
+  return out.subarray(0, o);
 }
 
 export function rleDecodeRGBA(src: Uint8ClampedArray, expectedBytes: number): Uint8ClampedArray {

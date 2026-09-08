@@ -1124,3 +1124,92 @@ describe("리뷰 #15 — 프로젝트 목록 UI", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #16 — RLE 최악 경우와 자동 저장 부하
+//
+// 노이즈가 많은 레이어(스프레이·사진)는 RLE 가 raw 의 1.5배가 되는데도 그대로
+// 저장했고, 인코더가 JS number[] 를 써서 힙을 크게 먹었다. 또 바뀌지 않은
+// 레이어도 자동 저장 때마다 다시 직렬화했다.
+// ---------------------------------------------------------------------------
+
+function noisyLayer(size: number): Layer {
+  const layer = new Layer({ name: "N", width: size, height: size, factory });
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = (i * 7) & 0xff;
+    data[i + 1] = (i * 13) & 0xff;
+    data[i + 2] = (i * 29) & 0xff;
+    data[i + 3] = 255;
+  }
+  layer.putPixels({ width: size, height: size, data }, 0, 0);
+  return layer;
+}
+
+describe("리뷰 #16 — RLE 최악 경우", () => {
+  it("RLE 가 raw 보다 크면 raw 로 저장한다", () => {
+    const layer = noisyLayer(32);
+    const snap = layer.serialize({ compact: true }) as any;
+    assertEqual(snap.rleRGBA, undefined, "부풀어난 RLE 를 쓰면 안 됨");
+    assertTrue(typeof snap.rawRGBA === "string" && snap.rawRGBA.length > 0, "raw 폴백이어야 함");
+  });
+
+  it("raw 폴백도 픽셀이 그대로 복원된다", () => {
+    const layer = noisyLayer(16);
+    const restored = Layer.deserialize(layer.serialize({ compact: true }), factory);
+    const a = layer.getPixels(0, 0, 16, 16).data;
+    const b = restored.getPixels(0, 0, 16, 16).data;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+    assertEqual(diff, 0);
+  });
+
+  it("잘 압축되는 레이어는 계속 RLE 를 쓴다", () => {
+    const layer = new Layer({ name: "S", width: 32, height: 32, factory });
+    const lctx = layer.getCtx();
+    lctx.fillStyle = "rgba(10,20,30,1)";
+    lctx.fillRect(0, 0, 32, 32);
+    const snap = layer.serialize({ compact: true }) as any;
+    assertTrue(typeof snap.rleRGBA === "string", "단색은 RLE 가 압도적으로 작다");
+    assertEqual(snap.rawRGBA, undefined);
+  });
+});
+
+describe("리뷰 #16 — 변경 없는 레이어 재직렬화", () => {
+  it("바뀌지 않았으면 픽셀을 다시 읽지 않는다", () => {
+    const layer = new Layer({ name: "C", width: 16, height: 16, factory });
+    const calls = recordImageDataCalls(layer);
+    layer.serialize({ compact: true });
+    const afterFirst = calls.length;
+    assertTrue(afterFirst > 0, "첫 직렬화는 픽셀을 읽는다");
+
+    layer.serialize({ compact: true });
+    assertEqual(calls.length, afterFirst, "두 번째는 캐시를 써야 함");
+  });
+
+  it("그린 뒤에는 다시 직렬화한다", () => {
+    const layer = new Layer({ name: "C", width: 16, height: 16, factory });
+    const calls = recordImageDataCalls(layer);
+    layer.serialize({ compact: true });
+    const afterFirst = calls.length;
+
+    const lctx = layer.getCtx(); // 그리기 위해 컨텍스트를 받아갔다 = 변경 가능성
+    lctx.fillStyle = "rgba(1,2,3,1)";
+    lctx.fillRect(0, 0, 4, 4);
+    layer.serialize({ compact: true });
+    assertTrue(calls.length > afterFirst, "변경 후에는 다시 읽어야 함");
+
+    const restored = Layer.deserialize(layer.serialize({ compact: true }), factory);
+    assertEqual(restored.getPixels(0, 0, 1, 1).data[0], 1, "캐시가 낡은 픽셀을 주면 안 됨");
+  });
+
+  it("메타만 바뀌어도 최신 값이 나온다", () => {
+    const layer = new Layer({ name: "C", width: 16, height: 16, factory });
+    layer.serialize({ compact: true });
+    layer.name = "새이름";
+    layer.opacity = 0.25;
+    const snap = layer.serialize({ compact: true });
+    assertEqual(snap.name, "새이름");
+    assertEqual(snap.opacity, 0.25);
+  });
+});
