@@ -55,6 +55,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 171 passed, 0 failed
 - **비고:** 레이어 전체 getImageData 2회 → 1회로 축소. 리뷰 #14(허용오차 기준 불일치)는 별건으로 남음.
 
+### [2026-09-08 04:12] 리뷰 #3 자동 저장 프로젝트 ID 불일치 수정
+- **기획:** 자동 저장 대상 ID를 프로젝트 전환 시 갱신하고, 자동 저장 시 복원 대상도 함께 기록. 복원은 자동/명시 저장본 중 최신을 선택.
+- **TC:** (정상) 최신본 선택, setProjectId 후 새 ID로 저장. (엣지) 한쪽만 존재/둘 다 없음, 임시 ID로 저장되지 않는지.
+- **개발:** `src/storage/AutoSaver.ts`, `src/app/PainterApp.ts`, `src/test/round10.test.ts`
+- **검증:** 175 passed, 0 failed
+- **비고:** 리뷰 #8(새 프로젝트 좌표 매핑)은 별건으로 남음.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

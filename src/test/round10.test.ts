@@ -106,3 +106,76 @@ describe("리뷰 #6 — 채우기 히스토리 크기", () => {
     assertTrue(rect.w >= 4 && rect.h >= 4, `칠한 영역을 모두 덮어야 함 (실제 ${rect.w}x${rect.h})`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #3 — 자동 저장 프로젝트 ID 불일치
+//
+// autoSaver.start() 는 부팅 시 임시 ID 로 한 번만 불리고 applyState/newProject
+// 에서 갱신되지 않았다. 그래서 자동 저장은 임시 ID 로 쌓이고, 복원은
+// lastOpenProjectId 의 autosave 를 읽으므로 지난 세션의 옛 상태가 올라왔다.
+// 게다가 lastOpenProjectId 는 명시적 저장(Ctrl+S)에서만 기록되어 자동 저장만
+// 쓰는 사용자는 복원 자체가 되지 않았다.
+// ---------------------------------------------------------------------------
+
+import { IndexedDBStore } from "../storage/IndexedDBStore.js";
+import { AutoSaver } from "../storage/AutoSaver.js";
+import { MockIndexedDB } from "./mocks/IndexedDB.js";
+import * as AppModule from "../app/PainterApp.js";
+
+async function freshStore(): Promise<IndexedDBStore> {
+  MockIndexedDB.reset();
+  const store = new IndexedDBStore(MockIndexedDB as any);
+  await store.open();
+  return store;
+}
+
+function makeSaver(store: IndexedDBStore, serialize: () => string): AutoSaver {
+  const stack = new LayerStack(8, 8, factory);
+  stack.add(new Layer({ width: 8, height: 8, factory }));
+  return new AutoSaver(store, stack, new CommandHistory(), { intervalMs: 999999, serialize });
+}
+
+describe("리뷰 #3 — 자동 저장 프로젝트 ID", () => {
+  it("setProjectId 로 바꾼 ID 아래에 저장한다", async () => {
+    const store = await freshStore();
+    const saver = makeSaver(store, () => '{"version":"1","who":"new"}');
+    saver.start("temp-boot-id");
+
+    const setId = (saver as unknown as { setProjectId?: (id: string) => void }).setProjectId;
+    assertTrue(typeof setId === "function", "AutoSaver.setProjectId 가 있어야 함");
+    setId!.call(saver, "loaded-project");
+    await saver.flushNow();
+    saver.stop(); // 인터벌을 남기면 테스트 러너가 종료되지 않는다
+
+    assertEqual((await store.getAutoSave("temp-boot-id"))?.projectJson, undefined, "임시 ID 로는 저장되면 안 됨");
+    assertTrue((await store.getAutoSave("loaded-project")) !== undefined, "새 ID 로 저장되어야 함");
+  });
+
+  it("자동 저장이 lastOpenProjectId 를 갱신한다", async () => {
+    const store = await freshStore();
+    const saver = makeSaver(store, () => '{"version":"1"}');
+    saver.start("p-auto");
+    await saver.flushNow();
+    saver.stop();
+    assertEqual(await store.getMeta("lastOpenProjectId"), "p-auto", "Ctrl+S 없이도 복원 대상이 기록되어야 함");
+  });
+});
+
+describe("리뷰 #3 — 복원 소스 선택", () => {
+  const pick = (AppModule as unknown as {
+    pickRestoreJson?: (a?: { savedAt: number; projectJson: string }, p?: { updatedAt: number; projectJson: string }) => string | undefined;
+  }).pickRestoreJson;
+
+  it("autosave 와 명시 저장 중 최신본을 고른다", () => {
+    assertTrue(typeof pick === "function", "pickRestoreJson 이 있어야 함");
+    assertEqual(pick!({ savedAt: 10, projectJson: "AUTO" }, { updatedAt: 5, projectJson: "PROJ" }), "AUTO");
+    assertEqual(pick!({ savedAt: 5, projectJson: "AUTO" }, { updatedAt: 10, projectJson: "PROJ" }), "PROJ");
+  });
+
+  it("한쪽만 있거나 둘 다 없는 경우를 처리한다", () => {
+    assertTrue(typeof pick === "function", "pickRestoreJson 이 있어야 함");
+    assertEqual(pick!(undefined, { updatedAt: 1, projectJson: "PROJ" }), "PROJ");
+    assertEqual(pick!({ savedAt: 1, projectJson: "AUTO" }, undefined), "AUTO");
+    assertEqual(pick!(undefined, undefined), undefined);
+  });
+});

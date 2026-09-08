@@ -32,6 +32,20 @@ const realCanvasFactory: CanvasFactory = (w, h) => {
   return c as unknown as ReturnType<CanvasFactory>;
 };
 
+/**
+ * 복원할 프로젝트 JSON 을 고른다. 자동 저장본과 명시 저장본 중 더 최근 것을
+ * 쓴다. 예전에는 자동 저장본만 봐서, Ctrl+S 로 저장한 최신 상태가 있어도
+ * 그보다 오래된 자동 저장본이 올라오는 경우가 있었다.
+ */
+export function pickRestoreJson(
+  auto?: { savedAt: number; projectJson: string },
+  project?: { updatedAt: number; projectJson: string }
+): string | undefined {
+  if (!auto) return project?.projectJson;
+  if (!project) return auto.projectJson;
+  return auto.savedAt >= project.updatedAt ? auto.projectJson : project.projectJson;
+}
+
 export class PainterApp {
   private projectId: string = Uid.next();
   private projectName: string = "Untitled";
@@ -253,9 +267,13 @@ export class PainterApp {
     try {
       const lastId = await this.store.getMeta("lastOpenProjectId") as string | undefined;
       if (lastId) {
-        const auto = await this.store.getAutoSave(lastId);
-        if (auto) {
-          this.applyState(ProjectCodec.decode(auto.projectJson));
+        const [auto, project] = await Promise.all([
+          this.store.getAutoSave(lastId),
+          this.store.getProject(lastId),
+        ]);
+        const json = pickRestoreJson(auto, project);
+        if (json) {
+          this.applyState(ProjectCodec.decode(json));
           void this.projectPanel.render();
         }
       }
@@ -514,6 +532,9 @@ export class PainterApp {
     // some browser builds, leaving a brief visual gap on Fold7).
     if (this.layerPanel) this.layerPanel.render();
     if (this.historyPanel) this.historyPanel.render();
+    // 자동 저장 대상을 방금 불러온 프로젝트로 옮긴다. 빠뜨리면 부팅 때의
+    // 임시 ID 아래에 저장이 쌓여 다음 실행에서 옛 상태가 복원된다.
+    if (this.autoSaver) this.autoSaver.setProjectId(this.projectId);
     this.scheduleRender();
   }
 
@@ -523,6 +544,7 @@ export class PainterApp {
     this.projectId = Uid.next();
     this.projectName = "Untitled";
     this.createdAt = Date.now();
+    if (this.autoSaver) this.autoSaver.setProjectId(this.projectId);
     this.newProjectInternal(w, h);
     this.scheduleRender();
     void this.saveProject();
