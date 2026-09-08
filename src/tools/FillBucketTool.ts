@@ -1,6 +1,7 @@
 import { Tool, ToolContext, ToolPointer } from "./Tool.js";
 import { Rect } from "../util/Rect.js";
 import { PixelEditCommand } from "../history/Commands.js";
+import { Color } from "../util/Color.js";
 
 /** RGBA 버퍼에서 rect 영역만 잘라낸다. 행 단위 memcpy 라 O(rect 면적). */
 function cropRGBA(data: Uint8ClampedArray, srcW: number, r: Rect): Uint8ClampedArray {
@@ -42,7 +43,7 @@ export class FillBucketTool implements Tool {
       target[2] === replacement.b &&
       target[3] === replacement.a
     ) return;
-    const tol2 = ctx.settings.tolerance * ctx.settings.tolerance * 3;
+    const tol2 = Color.toleranceSq(ctx.settings.tolerance);
 
     // 방문 마스크. 매치 판정을 src(원본) 기준으로 하고 채운 픽셀을 여기 표시해야
     // 종료가 보장된다. 예전처럼 갱신 중인 region 을 기준으로 보면, 칠할 색이

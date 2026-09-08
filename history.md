@@ -139,6 +139,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 208 passed, 0 failed
 - **비고:** 없음.
 
+### [2026-09-08 06:08] 리뷰 #14/#23/#24 허용오차 통일·색 파싱·데이터 검증
+- **기획:** `Color.toleranceSq()`로 Fill/Gradient 임계값을 ×4 로 통일, `Color.tryParse()`(실패 시 null) 추가, RLE·프로젝트 JSON 검증 추가.
+- **TC:** (정상) 임계값·왕복·정상 색 표기. (엣지) ×3/×4 경계색, `#gg0000`·`#ff00`·빈 문자열, 6의 배수 아닌 RLE, 기대 크기 초과, meta/layers 손상 JSON.
+- **개발:** `src/util/Color.ts`, `src/tools/FillBucketTool.ts`, `src/tools/GradientTool.ts`, `src/core/Layer.ts`, `src/io/ProjectCodec.ts`, `src/app/PainterApp.ts`
+- **검증:** 217 passed, 0 failed
+- **비고:** 배경 제거 프롬프트를 한글화하고 취소/오타를 각각 처리. `#rgb` 3자리 hex 지원 추가.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

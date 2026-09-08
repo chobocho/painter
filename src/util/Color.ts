@@ -62,6 +62,52 @@ export const Color = {
     return { r: 0, g: 0, b: 0, a: 255 };
   },
 
+  /**
+   * parse 와 같지만 인식하지 못한 입력에 검정 대신 null 을 돌려준다.
+   * 사용자가 색을 직접 입력하는 경로(배경 제거 프롬프트 등)는 반드시 이걸 써야
+   * 한다. 예전에는 오타를 내면 조용히 검정이 지워졌다.
+   */
+  tryParse(input: string): RGBA | null {
+    const s = input.trim().toLowerCase();
+    if (s.length === 0) return null;
+    if (s.startsWith("#")) {
+      const hex = s.slice(1);
+      if (!/^[0-9a-f]+$/.test(hex)) return null;
+      const expand = (c: string): number => parseInt(c + c, 16);
+      if (hex.length === 3) {
+        return { r: expand(hex[0]!), g: expand(hex[1]!), b: expand(hex[2]!), a: 255 };
+      }
+      if (hex.length === 6 || hex.length === 8) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+          a: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) : 255,
+        };
+      }
+      return null;
+    }
+    const m = s.match(/^rgba?\(([^)]+)\)$/);
+    if (!m) return null;
+    const parts = m[1]!.split(",").map((p) => parseFloat(p.trim()));
+    if (parts.length < 3 || parts.some((n) => !Number.isFinite(n))) return null;
+    return {
+      r: Math.round(parts[0]!),
+      g: Math.round(parts[1]!),
+      b: Math.round(parts[2]!),
+      a: parts[3] !== undefined ? Math.round(parts[3]! * 255) : 255,
+    };
+  },
+
+  /**
+   * 허용오차(0~128)를 RGBA 제곱거리 임계값으로 바꾼다.
+   * 채우기와 그라디언트가 같은 "허용" 값을 같은 뜻으로 쓰도록 여기 하나로 모았다
+   * (예전에는 채우기만 ×3 이라 같은 값이 더 좁게 동작했다). 채널이 4개이므로 ×4.
+   */
+  toleranceSq(tolerance: number): number {
+    return tolerance * tolerance * 4;
+  },
+
   toCss(c: RGBA): string {
     return `rgba(${c.r},${c.g},${c.b},${(c.a / 255).toFixed(3)})`;
   },

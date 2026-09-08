@@ -772,12 +772,27 @@ export class PainterApp {
   applyChromaKey(): void {
     const layer = this.stack.getActive();
     if (!layer) return;
-    const colorIn = prompt("Background color (hex)?", "#ffffff") ?? "#ffffff";
-    const tolStr = prompt("Tolerance (0-200)?", "20") ?? "20";
-    const featherStr = prompt("Feather (0-100)?", "10") ?? "10";
-    const key = Color.parse(colorIn);
-    const tol = parseInt(tolStr, 10);
-    const feather = parseInt(featherStr, 10);
+    const colorIn = prompt("배경색 (예: #ffffff)", "#ffffff");
+    if (colorIn === null) return;
+    // 오타를 검정으로 넘기지 않는다. 예전에는 Color.parse 가 조용히 검정을
+    // 돌려줘서 엉뚱하게 검정이 지워졌다.
+    const key = Color.tryParse(colorIn);
+    if (!key) {
+      this.flashStatus("⚠️ 색 형식이 올바르지 않습니다 (#rgb, #rrggbb, rgba(...))", 3500);
+      return;
+    }
+    const tolStr = prompt("허용오차 (0-200)", "20");
+    if (tolStr === null) return;
+    const featherStr = prompt("가장자리 부드럽게 (0-100)", "10");
+    if (featherStr === null) return;
+    // 허용오차 0 은 유효한 값이므로 parseProjectSize 를 쓰면 안 된다.
+    const clampNum = (v: string, fallback: number, min: number, max: number): number => {
+      const n = Number(v.trim());
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, Math.floor(n)));
+    };
+    const tol = clampNum(tolStr, 20, 0, 200);
+    const feather = clampNum(featherStr, 10, 0, 100);
     const before = layer.getPixels(0, 0, layer.width, layer.height);
     const out = removeBackground(before, key, tol, feather);
     layer.putPixels(out, 0, 0);

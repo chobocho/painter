@@ -60,7 +60,7 @@ function buildFloodMask(
   const tg = data[startIdx + 1]!;
   const tb = data[startIdx + 2]!;
   const ta = data[startIdx + 3]!;
-  const tol2 = tolerance * tolerance * 4;
+  const tol2 = Color.toleranceSq(tolerance);
 
   const matches = (x: number, y: number): boolean => {
     if (x < 0 || y < 0 || x >= width || y >= height) return false;

@@ -901,3 +901,97 @@ describe("리뷰 #13 — 설정 → 컨트롤 값 변환", () => {
     assertFalse(toControls!(s).mirrorY);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #14/#23/#24 — 허용오차 기준 불일치와 입력 검증 부재
+//
+//   * Fill 은 tol²×3, Gradient 는 tol²×4 로 같은 "허용" 값이 다르게 동작했다.
+//   * Color.parse 는 잘못된 입력에 조용히 검정을 돌려줘서, 배경 제거 프롬프트에
+//     오타를 내면 검정이 지워졌다.
+//   * rleDecodeRGBA / ProjectCodec.decode 에 검증이 없어 손상된 데이터가
+//     조용히 깨진 픽셀이 됐다.
+// ---------------------------------------------------------------------------
+
+import { Color } from "../util/Color.js";
+import { rleEncodeRGBA, rleDecodeRGBA } from "../core/Layer.js";
+import { ProjectCodec } from "../io/ProjectCodec.js";
+import { assertThrows } from "./runner.js";
+
+describe("리뷰 #14 — 허용오차 기준 통일", () => {
+  it("Fill 과 Gradient 가 같은 임계값을 쓴다", () => {
+    const sq = (Color as unknown as { toleranceSq?: (t: number) => number }).toleranceSq;
+    assertTrue(typeof sq === "function", "Color.toleranceSq 가 있어야 함");
+    assertEqual(sq!(0), 0);
+    assertEqual(sq!(16), 16 * 16 * 4);
+  });
+
+  it("tol²×3 과 ×4 사이의 색도 같은 영역으로 채운다", () => {
+    // 흰 배경에 (243,243,245) 한 점. 시드와의 제곱거리 388 → ×3(300)은 탈락,
+    // ×4(400)는 포함. Gradient 기준(×4)에 맞춘다.
+    const { ctx, layer } = bootstrap(16);
+    const lctx = layer.getCtx();
+    lctx.fillStyle = "rgba(255,255,255,1)";
+    lctx.fillRect(0, 0, 16, 16);
+    lctx.fillStyle = "rgba(243,243,245,1)";
+    lctx.fillRect(8, 8, 1, 1);
+
+    ctx.settings.color = { r: 0, g: 0, b: 255, a: 255 };
+    ctx.settings.tolerance = 10;
+    new FillBucketTool().onPointerDown(pointer(0, 0), ctx);
+
+    const px = layer.getPixels(8, 8, 1, 1).data;
+    assertEqual(px[2], 255, "허용오차 안의 점도 함께 칠해져야 함");
+    assertEqual(px[0], 0);
+  });
+});
+
+describe("리뷰 #23 — Color 파싱 검증", () => {
+  it("정상 표기를 파싱한다", () => {
+    const tp = (Color as unknown as { tryParse?: (s: string) => any }).tryParse;
+    assertTrue(typeof tp === "function", "Color.tryParse 가 있어야 함");
+    assertEqual(tp!("#ff0000")!.r, 255);
+    assertEqual(tp!("#fff")!.g, 255, "3자리 hex 도 지원");
+    assertEqual(tp!("rgba(1,2,3,1)")!.b, 3);
+  });
+
+  it("잘못된 입력은 null 이다 (검정이 아니라)", () => {
+    const tp = (Color as unknown as { tryParse?: (s: string) => any }).tryParse;
+    assertTrue(typeof tp === "function", "Color.tryParse 가 있어야 함");
+    assertEqual(tp!("바탕색"), null);
+    assertEqual(tp!("#gg0000"), null, "hex 가 아닌 문자");
+    assertEqual(tp!("#ff00"), null, "길이가 틀림");
+    assertEqual(tp!(""), null);
+  });
+
+  it("Color.parse 는 기존처럼 검정으로 폴백한다", () => {
+    assertEqual(Color.parse("nonsense").r, 0);
+    assertEqual(Color.parse("nonsense").a, 255);
+  });
+});
+
+describe("리뷰 #24 — 손상된 데이터 검증", () => {
+  it("정상 RLE 는 그대로 왕복한다", () => {
+    const src = new Uint8ClampedArray(64);
+    for (let i = 0; i < src.length; i += 4) { src[i] = 7; src[i + 3] = 255; }
+    const round = rleDecodeRGBA(rleEncodeRGBA(src), src.length);
+    assertEqual(round.length, src.length);
+    assertEqual(round[0], 7);
+    assertEqual(round[3], 255);
+  });
+
+  it("길이가 6의 배수가 아닌 RLE 는 거부한다", () => {
+    assertThrows(() => rleDecodeRGBA(new Uint8ClampedArray(7), 16));
+  });
+
+  it("기대 크기를 넘는 RLE 는 거부한다", () => {
+    // count=100 인 런 하나 = 400 바이트인데 16 바이트만 기대한다.
+    const bad = new Uint8ClampedArray([0, 100, 1, 2, 3, 4]);
+    assertThrows(() => rleDecodeRGBA(bad, 16));
+  });
+
+  it("형태가 깨진 프로젝트 JSON 을 거부한다", () => {
+    assertThrows(() => ProjectCodec.decode('{"version":"1.0.0"}'));
+    assertThrows(() => ProjectCodec.decode('{"version":"1.0.0","meta":{},"layers":[]}'));
+    assertThrows(() => ProjectCodec.decode('{"version":"1.0.0","meta":{"width":10,"height":10},"layers":"nope"}'));
+  });
+});

@@ -207,11 +207,19 @@ export function rleEncodeRGBA(data: Uint8ClampedArray): Uint8ClampedArray {
 }
 
 export function rleDecodeRGBA(src: Uint8ClampedArray, expectedBytes: number): Uint8ClampedArray {
+  // 손상된 저장본을 조용히 깨진 픽셀로 만들지 않는다. 런 하나는 정확히 6바이트
+  // (count 2 + RGBA 4)이고, 풀어낸 길이는 기대 크기와 맞아야 한다.
+  if (src.length % 6 !== 0) {
+    throw new Error(`rleDecodeRGBA: 손상된 RLE 길이 ${src.length} (6의 배수가 아님)`);
+  }
   const out = new Uint8ClampedArray(expectedBytes);
   let o = 0;
-  for (let i = 0; i + 5 < src.length + 1; i += 6) {
+  for (let i = 0; i < src.length; i += 6) {
     const count = ((src[i]! << 8) | src[i + 1]!) & 0xffff;
     const r = src[i + 2]!, g = src[i + 3]!, b = src[i + 4]!, a = src[i + 5]!;
+    if (o + count * 4 > expectedBytes) {
+      throw new Error(`rleDecodeRGBA: 기대 크기 ${expectedBytes} 를 넘는 데이터`);
+    }
     for (let k = 0; k < count; k++) {
       out[o++] = r;
       out[o++] = g;
