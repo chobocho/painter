@@ -19,8 +19,10 @@ interface DragState {
   shadow: CanvasLike;
   shadowCtx: Ctx2D;
   start: { x: number; y: number };
-  /** 1 = pixel is in the connected region under the click; 0 = leave alone */
-  mask: Uint8Array;
+  /** 마스크에 포함된 픽셀의 선형 인덱스 목록. 미리보기가 이것만 훑는다. */
+  maskPixels: Int32Array;
+  /** 마스크 bbox. 미리보기의 get/putImageData 범위이기도 하다. */
+  rect: Rect;
   bbox: Bbox;
 }
 
@@ -124,12 +126,33 @@ export class GradientTool implements Tool {
     const bbox = newBbox(minX < 0 ? 0 : minX, minY < 0 ? 0 : minY);
     if (maxX >= 0) expandBbox(bbox, maxX, maxY);
 
+    // 마스크 픽셀 인덱스를 여기서 한 번만 만들어 둔다. 예전에는 이동 이벤트마다
+    // 레이어 전체(W×H)를 두 번 돌면서 마스크를 다시 훑었다.
+    const rect = maxX >= 0
+      ? Rect.create(minX, minY, maxX - minX + 1, maxY - minY + 1)
+      : Rect.empty();
+    let count = 0;
+    for (let y = rect.y; y < rect.y + rect.h; y++) {
+      for (let x = rect.x; x < rect.x + rect.w; x++) {
+        if (mask[y * layer.width + x]) count++;
+      }
+    }
+    const maskPixels = new Int32Array(count);
+    let k = 0;
+    for (let y = rect.y; y < rect.y + rect.h; y++) {
+      for (let x = rect.x; x < rect.x + rect.w; x++) {
+        const idx = y * layer.width + x;
+        if (mask[idx]) maskPixels[k++] = idx;
+      }
+    }
+
     this.drag = {
       layer,
       shadow: shadow.canvas,
       shadowCtx: shadow.ctx,
       start: { x: p.x, y: p.y },
-      mask,
+      maskPixels,
+      rect,
       bbox,
     };
   }
@@ -163,30 +186,35 @@ export class GradientTool implements Tool {
     const dy = p.y - drag.start.y;
     const len2 = dx * dx + dy * dy;
     if (len2 < 1) return;
+    const rect = drag.rect;
+    if (Rect.isEmpty(rect)) return;
     const lctx = layer.getCtx();
-    const region = lctx.getImageData(0, 0, layer.width, layer.height);
-    for (let y = 0; y < layer.height; y++) {
-      for (let x = 0; x < layer.width; x++) {
-        if (!drag.mask[y * layer.width + x]) continue;
-        const i = (y * layer.width + x) * 4;
-        const wasEmpty = region.data[i + 3] === 0;
-        const px = x - drag.start.x;
-        const py = y - drag.start.y;
-        let t = (px * dx + py * dy) / len2;
-        if (t < 0) t = 0;
-        if (t > 1) t = 1;
-        const c = sampleGradient(ctx.settings.gradientStops, t);
-        region.data[i] = c.r;
-        region.data[i + 1] = c.g;
-        region.data[i + 2] = c.b;
-        // Round-7: previously-empty pixels (alpha 0) take the gradient
-        // color's alpha so they actually become visible. Pixels that
-        // already had color keep their original alpha so anti-aliased
-        // shape edges stay soft.
-        if (wasEmpty) region.data[i + 3] = c.a;
-      }
+    // bbox 안쪽만 읽고 쓴다. 마스크 픽셀 목록은 pointerDown 에서 만들어 뒀다.
+    // O(마스크 픽셀 수) 시간, 추가 할당 없음.
+    const region = lctx.getImageData(rect.x, rect.y, rect.w, rect.h);
+    const w = layer.width;
+    for (let n = 0; n < drag.maskPixels.length; n++) {
+      const idx = drag.maskPixels[n]!;
+      const x = idx % w;
+      const y = (idx - x) / w;
+      const i = ((y - rect.y) * rect.w + (x - rect.x)) * 4;
+      const wasEmpty = region.data[i + 3] === 0;
+      const px = x - drag.start.x;
+      const py = y - drag.start.y;
+      let t = (px * dx + py * dy) / len2;
+      if (t < 0) t = 0;
+      if (t > 1) t = 1;
+      const c = sampleGradient(ctx.settings.gradientStops, t);
+      region.data[i] = c.r;
+      region.data[i + 1] = c.g;
+      region.data[i + 2] = c.b;
+      // Round-7: previously-empty pixels (alpha 0) take the gradient
+      // color's alpha so they actually become visible. Pixels that
+      // already had color keep their original alpha so anti-aliased
+      // shape edges stay soft.
+      if (wasEmpty) region.data[i + 3] = c.a;
     }
-    lctx.putImageData(region, 0, 0);
-    ctx.stack.markDirty(Rect.create(0, 0, layer.width, layer.height));
+    lctx.putImageData(region, rect.x, rect.y);
+    ctx.stack.markDirty(rect);
   }
 }

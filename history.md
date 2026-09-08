@@ -97,6 +97,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 190 passed, 0 failed / esbuild 번들 135KB → 인라인 HTML 144KB
 - **비고:** 로컬에 전역 tsc·esbuild 가 없어 build.sh 대신 동일 파이프라인을 스크래치패드 바이너리로 실행.
 
+### [2026-09-08 05:05] 리뷰 #5 그라디언트 미리보기 범위 축소
+- **기획:** pointerDown 에서 마스크 픽셀 인덱스와 bbox 를 만들어 두고, 미리보기는 bbox 만 get/putImageData 하며 마스크 픽셀만 순회.
+- **TC:** (정상) 미리보기 후 색·undo 결과 동일. (엣지) 이동 3회 동안 ImageData 호출 크기가 bbox 규모(≤100px)인지 계측.
+- **개발:** `src/tools/GradientTool.ts`, `src/test/round10.test.ts`
+- **검증:** 192 passed, 0 failed
+- **비고:** 64×64 기준 이동당 4096px → 16px. markDirty 도 bbox 로 축소.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

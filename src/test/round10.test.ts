@@ -573,3 +573,78 @@ describe("리뷰 #9 — 투명도 드래그 커밋", () => {
     assertEqual(layer.opacity, 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #5 — 그라디언트 미리보기가 매 pointermove 마다 전체 레이어를 순회
+//
+// 마스크 bbox 는 pointerDown 에서 이미 계산해 두는데도 preview 는 레이어 전체를
+// getImageData/putImageData 하고 W×H 를 두 번 돌았다. 1920×1280 이면 이동
+// 이벤트마다 240만 픽셀이다.
+// ---------------------------------------------------------------------------
+
+import { GradientTool } from "../tools/GradientTool.js";
+
+interface ImageDataCall { op: string; w: number; h: number; }
+
+/** 레이어 컨텍스트의 get/putImageData 호출 크기를 기록한다. */
+function recordImageDataCalls(layer: Layer): ImageDataCall[] {
+  const lctx = layer.getCtx() as any;
+  const calls: ImageDataCall[] = [];
+  const origGet = lctx.getImageData.bind(lctx);
+  const origPut = lctx.putImageData.bind(lctx);
+  lctx.getImageData = (x: number, y: number, w: number, h: number) => {
+    calls.push({ op: "get", w, h });
+    return origGet(x, y, w, h);
+  };
+  lctx.putImageData = (img: any, x: number, y: number) => {
+    calls.push({ op: "put", w: img.width, h: img.height });
+    return origPut(img, x, y);
+  };
+  return calls;
+}
+
+describe("리뷰 #5 — 그라디언트 미리보기 범위", () => {
+  it("미리보기는 마스크 bbox 만 읽고 쓴다", () => {
+    const { ctx, layer } = bootstrap(64);
+    const lctx = layer.getCtx();
+    lctx.fillStyle = "rgba(0,255,0,1)";
+    lctx.fillRect(10, 10, 4, 4); // 마스크가 될 작은 영역
+    ctx.settings.tolerance = 0;
+
+    const tool = new GradientTool();
+    tool.onPointerDown(pointer(11, 11), ctx); // 여기서는 전체 읽기가 정상(플러드 마스크)
+    const calls = recordImageDataCalls(layer);
+    tool.onPointerMove(pointer(13, 13), ctx);
+    tool.onPointerMove(pointer(20, 20), ctx);
+    tool.onPointerMove(pointer(30, 30), ctx);
+
+    assertTrue(calls.length > 0, "미리보기가 픽셀을 만져야 함");
+    const biggest = Math.max(...calls.map((c) => c.w * c.h));
+    assertTrue(biggest <= 100, `bbox(16px) 규모여야 함, 실제 최대 ${biggest}px`);
+  });
+
+  it("bbox 만 순회해도 그라디언트 결과는 같다", () => {
+    const { ctx, history, stack, layer } = bootstrap(64);
+    const lctx = layer.getCtx();
+    lctx.fillStyle = "rgba(0,255,0,1)";
+    lctx.fillRect(10, 10, 4, 4);
+    ctx.settings.tolerance = 0;
+
+    const tool = new GradientTool();
+    tool.onPointerDown(pointer(10, 10), ctx);
+    tool.onPointerMove(pointer(13, 13), ctx);
+    tool.onPointerUp(pointer(13, 13), ctx);
+
+    // 마스크 안은 그라디언트로 바뀌고, 마스크 밖은 그대로다.
+    const inside = layer.getPixels(10, 10, 1, 1).data;
+    // 기본 그라디언트는 빨강(t=0) → 파랑(t=1). 시작점이라 빨강이어야 한다.
+    assertEqual(inside[0], 255, "마스크 안이 그라디언트 시작색이어야 함");
+    assertEqual(inside[1], 0);
+    assertEqual(layer.getPixels(30, 30, 1, 1).data[3], 0, "마스크 밖은 건드리지 않아야 함");
+
+    history.undo({ stack });
+    const restored = layer.getPixels(10, 10, 1, 1).data;
+    assertEqual(restored[0], 0, "undo 로 원래 초록 복원");
+    assertEqual(restored[1], 255);
+  });
+});
