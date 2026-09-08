@@ -12,7 +12,11 @@ export interface InputBindings {
 }
 
 export class InputAdapter {
-  private down = false;
+  // 진행 중인 스트로크. pointerdown 시점의 도구와 pointerId 를 고정한다.
+  // 이벤트마다 getActiveTool() 을 다시 부르면, 스트로크 도중 단축키로 도구를
+  // 바꿨을 때 이전 도구의 drag 가 고아가 되어 ctx.save() 가 복구되지 않고
+  // 스트로크도 커밋되지 않는다(undo 불가, shadow 캔버스 누수).
+  private stroke: { tool: Tool; pointerId: number } | null = null;
   private cleanup: (() => void)[] = [];
 
   constructor(
@@ -38,22 +42,29 @@ export class InputAdapter {
         ctrl: e.ctrlKey || e.metaKey,
         alt: e.altKey,
       };
-      const tool = this.bindings.getActiveTool();
       const ctx = this.bindings.getToolContext();
+      const pointerId = e.pointerId ?? 0;
       if (kind === "down") {
-        this.down = true;
+        // 스트로크 진행 중에 닿은 두 번째 손가락은 무시한다. 예전에는 여기서
+        // 스트로크가 재시작되어 첫 손가락의 획이 통째로 버려졌다.
+        if (this.stroke) return;
+        this.stroke = { tool: this.bindings.getActiveTool(), pointerId };
         this.bindings.onPointerStateChange?.(true);
-        try { (this.el as Element & { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId); } catch { /* noop */ }
-        tool.onPointerDown(p, ctx);
-      } else if (kind === "move" && this.down) {
-        tool.onPointerMove(p, ctx);
+        try { (this.el as Element & { setPointerCapture?: (id: number) => void }).setPointerCapture?.(pointerId); } catch { /* noop */ }
+        this.stroke.tool.onPointerDown(p, ctx);
+        return;
+      }
+      const stroke = this.stroke;
+      if (!stroke || stroke.pointerId !== pointerId) return;
+      if (kind === "move") {
+        stroke.tool.onPointerMove(p, ctx);
       } else if (kind === "up") {
-        if (this.down) tool.onPointerUp(p, ctx);
-        this.down = false;
+        this.stroke = null;
+        stroke.tool.onPointerUp(p, ctx);
         this.bindings.onPointerStateChange?.(false);
       } else if (kind === "cancel") {
-        if (this.down) tool.onPointerCancel(ctx);
-        this.down = false;
+        this.stroke = null;
+        stroke.tool.onPointerCancel(ctx);
         this.bindings.onPointerStateChange?.(false);
       }
     };

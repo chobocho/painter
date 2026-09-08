@@ -76,6 +76,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 181 passed, 0 failed
 - **비고:** 폴백 인코딩 실측 1920×1280 기준 3.62s → 1.65s. 빈 레이어는 픽셀 데이터 자체를 담지 않음.
 
+### [2026-09-08 04:42] 리뷰 #7 드래그 중 도구 전환·멀티터치 처리
+- **기획:** pointerdown 시점의 도구와 pointerId 를 스트로크에 고정. 다른 포인터의 down/move/up/cancel 은 무시.
+- **TC:** (정상) 전환된 도구는 다음 스트로크부터 사용. (엣지) 스트로크 도중 도구 전환, 두 번째 손가락 down/move/up, 다른 포인터의 cancel.
+- **개발:** `src/input/InputAdapter.ts`, `src/test/round10.test.ts`
+- **검증:** 185 passed, 0 failed
+- **비고:** 고아 drag 로 인한 `ctx.save()` 미복구·커밋 누락·shadow 누수 경로 제거.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

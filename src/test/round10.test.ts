@@ -296,3 +296,115 @@ describe("리뷰 #4 — 히스토리 스냅샷 압축", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #7 — 드래그 중 도구 전환 / 멀티터치 미처리
+//
+// InputAdapter 는 이벤트마다 getActiveTool() 을 다시 조회하고 pointerId 를
+// 추적하지 않았다. 스트로크 도중 단축키로 도구를 바꾸면 이전 도구의 drag 가
+// 고아가 되어 ctx.save() 가 복구되지 않고 스트로크도 커밋되지 않으며(undo 불가)
+// shadow 캔버스가 샌다. 두 번째 손가락이 닿으면 스트로크가 재시작됐다.
+// ---------------------------------------------------------------------------
+
+import { DisplayCanvas } from "../core/Canvas.js";
+import { InputAdapter } from "../input/InputAdapter.js";
+import { Tool } from "../tools/Tool.js";
+import { MockHTMLElement, MockPointerEvent, installWindowGlobal } from "./mocks/Dom.js";
+
+/** 호출 이력만 기록하는 도구. */
+class SpyTool implements Tool {
+  cursor = "crosshair";
+  calls: string[] = [];
+  constructor(public id: string) {}
+  onPointerDown(): void { this.calls.push("down"); }
+  onPointerMove(): void { this.calls.push("move"); }
+  onPointerUp(): void { this.calls.push("up"); }
+  onPointerCancel(): void { this.calls.push("cancel"); }
+}
+
+function wireInput(): { el: MockHTMLElement; setTool: (t: Tool) => void; destroy: () => void } {
+  installWindowGlobal();
+  const stack = new LayerStack(64, 64, factory);
+  stack.add(new Layer({ name: "L", width: 64, height: 64, factory }));
+  const toolCtx: ToolContext = {
+    stack,
+    history: new CommandHistory(),
+    settings: defaultSettings(),
+    previewLayer: new Layer({ width: 64, height: 64, factory }),
+  };
+  const display = new DisplayCanvas(new MockHTMLCanvasElement(64, 64) as any, 64, 64, 1);
+  display.resizeDisplay(64, 64, 1);
+  const el = new MockHTMLElement(64, 64, 0, 0);
+  let active: Tool = new SpyTool("initial");
+  const input = new InputAdapter(display, el as any, {
+    getActiveTool: () => active,
+    getToolContext: () => toolCtx,
+  });
+  input.bind();
+  return { el, setTool: (t) => { active = t; }, destroy: () => input.unbind() };
+}
+
+function send(el: MockHTMLElement, type: string, x: number, y: number, pointerId = 1): void {
+  el.dispatchEvent(new MockPointerEvent(type, { clientX: x, clientY: y, pointerId }));
+}
+
+describe("리뷰 #7 — 드래그 중 도구 전환", () => {
+  it("pointerdown 시점의 도구가 up 까지 스트로크를 끝낸다", () => {
+    const w = wireInput();
+    const first = new SpyTool("first");
+    const second = new SpyTool("second");
+    w.setTool(first);
+    send(w.el, "pointerdown", 5, 5);
+    w.setTool(second); // 스트로크 도중 단축키로 도구 전환
+    send(w.el, "pointermove", 20, 20);
+    send(w.el, "pointerup", 20, 20);
+    w.destroy();
+
+    assertEqual(first.calls.join(","), "down,move,up", "최초 도구가 끝까지 처리해야 함");
+    assertEqual(second.calls.length, 0, "전환된 도구는 이번 스트로크에 관여하면 안 됨");
+  });
+
+  it("전환된 도구는 다음 스트로크부터 쓰인다", () => {
+    const w = wireInput();
+    const first = new SpyTool("first");
+    const second = new SpyTool("second");
+    w.setTool(first);
+    send(w.el, "pointerdown", 5, 5);
+    send(w.el, "pointerup", 5, 5);
+    w.setTool(second);
+    send(w.el, "pointerdown", 9, 9);
+    send(w.el, "pointerup", 9, 9);
+    w.destroy();
+
+    assertEqual(second.calls.join(","), "down,up", "다음 스트로크는 새 도구가 받아야 함");
+  });
+});
+
+describe("리뷰 #7 — 멀티터치", () => {
+  it("두 번째 포인터는 스트로크를 재시작하지 않는다", () => {
+    const w = wireInput();
+    const tool = new SpyTool("t");
+    w.setTool(tool);
+    send(w.el, "pointerdown", 5, 5, 1);
+    send(w.el, "pointerdown", 40, 40, 2); // 두 번째 손가락
+    send(w.el, "pointermove", 41, 41, 2);
+    send(w.el, "pointerup", 41, 41, 2);
+    send(w.el, "pointermove", 6, 6, 1);
+    send(w.el, "pointerup", 6, 6, 1);
+    w.destroy();
+
+    assertEqual(tool.calls.join(","), "down,move,up", "첫 포인터만 처리해야 함");
+  });
+
+  it("취소도 스트로크를 시작한 포인터만 받는다", () => {
+    const w = wireInput();
+    const tool = new SpyTool("t");
+    w.setTool(tool);
+    send(w.el, "pointerdown", 5, 5, 1);
+    send(w.el, "pointercancel", 5, 5, 2);
+    send(w.el, "pointercancel", 5, 5, 1);
+    w.destroy();
+
+    assertEqual(tool.calls.join(","), "down,cancel", "다른 포인터의 취소는 무시해야 함");
+  });
+});
