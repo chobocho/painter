@@ -111,6 +111,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 195 passed, 0 failed
 - **비고:** prompt 문구를 한글로 통일. 취소 시 프로젝트를 만들지 않도록 변경.
 
+### [2026-09-08 05:22] 리뷰 #10/#19 레이어 개수 가드 통일
+- **기획:** `canAddLayer()`/`canRemoveLayer()`로 가드를 한곳에 모으고 추가·삭제·PNG 가져오기 세 경로에 모두 적용.
+- **TC:** (엣지) 0/상한-1/상한/상한+1 추가 가능 여부, 0/1/2장 삭제 가능 여부.
+- **개발:** `src/app/PainterApp.ts`, `src/test/round10.test.ts`
+- **검증:** 197 passed, 0 failed
+- **비고:** PNG 가져오기가 5개 제한을 우회하던 경로 차단, 마지막 레이어 삭제 시 안내 표시.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

@@ -8,7 +8,7 @@
 //   * 리뷰 #6 — 채우기가 before/after 로 레이어 전체(1920×1280 기준 약
 //     20MB)를 히스토리에 넣던 문제. 실제로 바뀐 픽셀의 bbox 만 저장해야 한다.
 
-import { describe, it, assertEqual, assertTrue } from "./runner.js";
+import { describe, it, assertEqual, assertTrue, assertFalse } from "./runner.js";
 import { Layer } from "../core/Layer.js";
 import { LayerStack } from "../core/LayerStack.js";
 import { CommandHistory } from "../history/CommandHistory.js";
@@ -686,5 +686,34 @@ describe("리뷰 #8 — 프로젝트 크기 입력 검증", () => {
     assertTrue(typeof max === "number", "MAX_PROJECT_SIZE 가 있어야 함");
     assertEqual(parse!("1000000000", 100), max);
     assertEqual(parse!("1e9", 100), max);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 리뷰 #10/#19 — 레이어 개수 가드
+//
+// PNG 가져오기는 레이어 5개 제한을 검사하지 않아 제한을 우회했고, 레이어
+// 삭제에는 마지막 한 장을 지키는 가드가 없어 캔버스가 비어버릴 수 있었다.
+// ---------------------------------------------------------------------------
+
+import { LAYER_LIMIT } from "../ui/LayerPanel.js";
+
+describe("리뷰 #10/#19 — 레이어 개수 가드", () => {
+  const canAdd = (AppModule as unknown as { canAddLayer?: (n: number) => boolean }).canAddLayer;
+  const canRemove = (AppModule as unknown as { canRemoveLayer?: (n: number) => boolean }).canRemoveLayer;
+
+  it("추가는 상한 미만에서만 허용된다", () => {
+    assertTrue(typeof canAdd === "function", "canAddLayer 가 있어야 함");
+    assertTrue(canAdd!(0), "0장에서는 추가 가능");
+    assertTrue(canAdd!(LAYER_LIMIT - 1), "상한 직전에는 추가 가능");
+    assertFalse(canAdd!(LAYER_LIMIT), "상한에서는 추가 불가");
+    assertFalse(canAdd!(LAYER_LIMIT + 1), "상한을 넘겨도 추가 불가");
+  });
+
+  it("삭제는 마지막 한 장을 남긴다", () => {
+    assertTrue(typeof canRemove === "function", "canRemoveLayer 가 있어야 함");
+    assertFalse(canRemove!(0), "빈 스택에서는 삭제 불가");
+    assertFalse(canRemove!(1), "마지막 한 장은 지운다");
+    assertTrue(canRemove!(2), "2장부터 삭제 가능");
   });
 });

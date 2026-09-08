@@ -48,6 +48,19 @@ const realCanvasFactory: CanvasFactory = (w, h) => {
  * preview() 는 화면만 바꾸고, commit() 이 드래그 시작 전 값을 before 로 삼아
  * 커맨드를 만든다. 값이 그대로면 아무것도 기록하지 않는다.
  */
+/**
+ * 레이어를 더 추가할 수 있는지. PNG 가져오기도 반드시 이걸 거쳐야 한다.
+ * 예전에는 addLayer 에만 검사가 있어 PNG 로 제한을 우회할 수 있었다.
+ */
+export function canAddLayer(count: number): boolean {
+  return count < LAYER_LIMIT;
+}
+
+/** 레이어를 지울 수 있는지. 마지막 한 장은 남겨 캔버스가 비지 않게 한다. */
+export function canRemoveLayer(count: number): boolean {
+  return count > 1;
+}
+
 /** 캔버스 한 변의 상한. 이보다 크면 브라우저가 캔버스 생성에 실패한다. */
 export const MAX_PROJECT_SIZE = 8192;
 
@@ -459,7 +472,7 @@ export class PainterApp {
   }
 
   private addLayer(): void {
-    if (this.stack.size() >= LAYER_LIMIT) {
+    if (!canAddLayer(this.stack.size())) {
       this.flashStatus(`⚠️  최대 ${LAYER_LIMIT}개 레이어까지 만들 수 있습니다`, 2500);
       return;
     }
@@ -478,6 +491,10 @@ export class PainterApp {
   private removeLayer(id: string): void {
     const layer = this.stack.get(id);
     if (!layer) return;
+    if (!canRemoveLayer(this.stack.size())) {
+      this.flashStatus("⚠️  마지막 레이어는 삭제할 수 없습니다", 2500);
+      return;
+    }
     const index = this.stack.getAll().findIndex((l) => l.id === id);
     this.history.execute(new RemoveLayerCommand({ snapshot: historySnapshot(layer), index }), { stack: this.stack });
   }
@@ -695,6 +712,10 @@ export class PainterApp {
 
   async importPng(file: File): Promise<void> {
     try {
+      if (!canAddLayer(this.stack.size())) {
+        this.flashStatus(`⚠️  최대 ${LAYER_LIMIT}개 레이어까지 만들 수 있습니다`, 2500);
+        return;
+      }
       const layer = await importPngFile(file, this.projectWidth, this.projectHeight, realCanvasFactory, file.name);
       this.history.execute(
         new AddLayerCommand({ snapshot: historySnapshot(layer), index: this.stack.size() }),
