@@ -1,6 +1,6 @@
 # Chobo Painter
 
-HTML5 캔버스 기반의 웹 그림판입니다. TypeScript로 작성됐고 외부 런타임 의존성은 0개입니다 — 빌드 시 `tsc` 외에는 아무것도 설치하지 않아도 됩니다.
+HTML5 캔버스 기반의 웹 그림판입니다. TypeScript로 작성됐고 **런타임 의존성은 0개**입니다. 빌드 도구(`typescript`, `esbuild`)만 `package.json`에 버전 고정되어 있습니다.
 
 ## 주요 기능
 
@@ -56,23 +56,26 @@ HTML5 캔버스 기반의 웹 그림판입니다. TypeScript로 작성됐고 외
 ## 빌드 및 실행
 
 ```bash
-# 1. TypeScript 컴파일 + 테스트 실행 + release/ 폴더에 배포본 복사
-./build.sh
+# 0. 빌드 도구 설치 (버전 고정, 최초 1회)
+npm ci
 
-# 2. release 폴더의 index.html을 정적 서버로 띄우거나 직접 브라우저로 엽니다.
+# 1. TypeScript 컴파일 + 테스트 실행 + 단일 파일 번들 생성
+./build.sh          # Windows 는 build.bat
+
+# 2. release/index.html 을 브라우저로 바로 열거나 정적 서버로 띄웁니다.
 #    예) python3 -m http.server -d release 8000
 ```
 
-빌드 산출물은 `release/` 폴더에 `index.html`, `style.css`, `js/`, `img/` 형태로 정리됩니다 (~360KB).
+빌드 산출물은 `release/index.html` **한 개**입니다 (~150KB). CSS와 JS가 모두 인라인되어
+있어 파일 하나만 옮기면 그대로 동작합니다.
 
 ## 테스트
 
 ```bash
-tsc                            # 컴파일
-node dist/src/test/main.js     # 테스트 실행
+npm test                       # 컴파일 + 테스트 실행
 ```
 
-160개 이상의 테스트 케이스가 다음을 검증합니다:
+230개 이상의 테스트 케이스가 다음을 검증합니다:
 - **단위 테스트**: util / core (Layer, LayerStack, Canvas) / history / 도구별 픽셀 검증
 - **회귀 테스트**: 기존 결함이 다시 들어오지 않도록 (`reset/replace` 리스너 보존, 펜슬 perf, 도형 commit, `pointerleave` 처리 등)
 - **통합 테스트**: 실제 production `InputAdapter`에 모의 `PointerEvent`를 dispatch해서 도구 → 히스토리 → 레이어 픽셀까지 end-to-end 파이프라인 검증
@@ -85,7 +88,8 @@ node dist/src/test/main.js     # 테스트 실행
 painter/
 ├── README.md            # 이 파일
 ├── history.md           # 다중 에이전트 작업 이력
-├── build.sh             # tsc → 테스트 → release/ 복사
+├── package.json         # 빌드 도구 버전 고정 (런타임 의존성 없음)
+├── build.sh             # tsc → 테스트 → 단일 파일 번들 (build.bat = Windows 판)
 ├── tsconfig.json
 ├── legacy/              # 원본 vanilla JS 페인터 (참고용)
 ├── src/
@@ -102,7 +106,7 @@ painter/
 │   ├── ui/              # Toolbar, Palette, LayerPanel, HistoryPanel, ProjectPanel
 │   ├── util/            # Rect, Color, Uid, Events
 │   └── test/            # 단위/통합/회귀/UI 테스트 + 모의 (Canvas, IndexedDB, DOM)
-└── release/             # 빌드 산출물 (gitignored)
+└── release/index.html   # 빌드 산출물 (단일 파일, 저장소에 포함)
 ```
 
 ## 다중 에이전트 작업 흐름

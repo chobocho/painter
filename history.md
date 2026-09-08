@@ -181,6 +181,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 230 passed, 0 failed
 - **비고:** IDB 쓰기는 동기 실행이 불가능해 beforeunload 만으로는 보장 못 함 — visibilitychange/pagehide 에 의존.
 
+### [2026-09-08 07:20] 리뷰 #21/#22 빌드 스크립트 정합·의존성 고정
+- **기획:** `package.json`으로 typescript 5.9.3 / esbuild 0.28.2 고정, build.sh/bat 이 로컬 바이너리 우선 사용. build.bat 을 단일 파일 번들 방식으로 재작성.
+- **TC:** 스크립트라 자동 테스트 대상 아님 — `npm ci && ./build.sh` 를 실제로 완주시켜 검증.
+- **개발:** `package.json`, `package-lock.json`, `build.sh`, `build.bat`, `README.md`, `release/index.html`
+- **검증:** build.sh 완주 (230 passed, 0 failed / BUILD OK 156K)
+- **비고:** build.bat 의 존재하지 않는 `legacy/img` 복사·정의되지 않은 `!size!`·다중 파일 스테이징 제거. README 빌드/테스트 절도 단일 파일 기준으로 갱신.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

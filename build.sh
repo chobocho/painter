@@ -9,11 +9,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+# 빌드 도구는 package.json 에 고정된 로컬 설치본을 먼저 쓴다. 전역 tsc 나
+# 네트워크의 npx 에 기대면 기계마다 다른 버전으로 빌드된다 (`npm ci` 권장).
+TSC="$ROOT/node_modules/.bin/tsc"
+[ -x "$TSC" ] || TSC="tsc"
+ESBUILD="$ROOT/node_modules/.bin/esbuild"
+[ -x "$ESBUILD" ] || ESBUILD="npx --yes esbuild"
+
 echo "==> Cleaning previous outputs"
 rm -rf dist release
 
-echo "==> Compiling TypeScript"
-tsc
+echo "==> Compiling TypeScript ($TSC)"
+"$TSC" -p tsconfig.json
 
 echo "==> Running tests"
 node dist/src/test/main.js
@@ -22,7 +29,7 @@ echo "==> Bundling JS"
 mkdir -p release
 BUNDLE="$(mktemp)"
 trap 'rm -f "$BUNDLE"' EXIT
-npx --yes esbuild dist/src/app/main.js \
+$ESBUILD dist/src/app/main.js \
   --bundle --format=iife --target=es2020 --platform=browser \
   --log-level=warning \
   > "$BUNDLE"

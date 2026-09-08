@@ -1,0 +1,19 @@
+{
+  "name": "painter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HTML5 canvas web painter, TypeScript rewrite. No runtime dependencies.",
+  "type": "module",
+  "scripts": {
+    "build": "./build.sh",
+    "compile": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node dist/src/test/main.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

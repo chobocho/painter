@@ -1,45 +1,51 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 set ROOT=%~dp0
 cd /d "%ROOT%"
 
-echo ==> Cleaning previous outputs
+:: 빌드 도구는 package.json 에 고정된 로컬 설치본을 먼저 쓴다 (npm ci 권장).
+set TSC=%ROOT%node_modules\.bin\tsc.cmd
+if not exist "%TSC%" set TSC=tsc
+set ESBUILD=%ROOT%node_modules\.bin\esbuild.cmd
+if not exist "%ESBUILD%" set ESBUILD=npx --yes esbuild
+
+echo ==^> Cleaning previous outputs
 if exist dist rd /s /q dist
 if exist release rd /s /q release
 
-echo ==> Compiling TypeScript
-call tsc
+echo ==^> Compiling TypeScript
+call "%TSC%" -p tsconfig.json
 if errorlevel 1 (
     echo [ERROR] TypeScript compilation failed.
-    exit /b %errorlevel%
+    exit /b 1
 )
 
-echo ==> Running tests
+echo ==^> Running tests
 node dist\src\test\main.js
 if errorlevel 1 (
     echo [ERROR] Tests failed.
-    exit /b %errorlevel%
+    exit /b 1
 )
 
-echo ==> Staging release/
-if not exist release\js mkdir release\js
-if not exist release\img mkdir release\img
-
-:: Copy entry HTML and CSS to the release root.
-if exist src\index.html copy src\index.html release\index.html >nul
-if exist src\style.css  copy src\style.css  release\style.css  >nul
-
-:: Copy image assets (legacy palette icons re-used by the new UI).
-if exist legacy\img (
-    xcopy /e /i /y legacy\img release\img >nul
+echo ==^> Bundling JS
+mkdir release
+call "%ESBUILD%" dist\src\app\main.js --bundle --format=iife --target=es2020 --platform=browser --log-level=warning --outfile=release\bundle.tmp.js
+if errorlevel 1 (
+    echo [ERROR] Bundling failed.
+    exit /b 1
 )
 
-:: Copy compiled JS, mirroring the src tree under release/js, but exclude tests.
-:: Using robocopy to mirror structure and exclude test folder.
-:: /S: copy subdirectories, but not empty ones
-:: /XD: exclude directories matching given names/paths
-robocopy dist\src release\js *.js /S /XD test >nul
-echo ==> BUILD OK (Release directory staged, Total Size: !size! Bytes)
+echo ==^> Inlining into release\index.html
+set HTML=src\index.html
+set CSS=src\style.css
+set JS=release\bundle.tmp.js
+set OUT=release\index.html
+node -e "const fs=require('fs');const html=fs.readFileSync(process.env.HTML,'utf8');const css=fs.readFileSync(process.env.CSS,'utf8');const js=fs.readFileSync(process.env.JS,'utf8');const out=html.replace(/\s*<link\s+rel=\"stylesheet\"[^>]*>\s*/i,'\n    <style>\n'+css+'\n    </style>\n  ').replace(/\s*<script\b[^>]*><\/script>\s*/i,'\n    <script>\n'+js+'\n    </script>\n  ');fs.writeFileSync(process.env.OUT,out);"
+if errorlevel 1 (
+    echo [ERROR] Inlining failed.
+    exit /b 1
+)
+del "%JS%"
 
-
+for %%A in ("%OUT%") do echo ==^> BUILD OK (%%~zA bytes)

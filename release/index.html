@@ -391,14 +391,31 @@ html, body {
 .btn-row label input { display: none; }
 
 .project-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   background: var(--panel2);
   border: 1px solid var(--border);
   padding: 4px 6px;
   border-radius: 3px;
-  cursor: pointer;
   font-size: 11px;
 }
 .project-row:hover { border-color: var(--accent); }
+/* 이름은 남는 폭을 다 쓰고, 길면 말줄임. 버튼은 오른쪽에 고정. */
+.project-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.project-rename, .project-delete {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1;
+}
 
 .project-empty {
   font-size: 11px;
@@ -521,6 +538,18 @@ html, body {
         writable: true,
         value: void 0
       });
+      Object.defineProperty(this, "revision", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: 0
+      });
+      Object.defineProperty(this, "serializeCache", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: null
+      });
       this.id = opts.id ?? Uid.next();
       this.name = opts.name ?? "Layer";
       this.canvas = opts.factory(opts.width, opts.height);
@@ -538,16 +567,24 @@ html, body {
     getCanvas() {
       return this.canvas;
     }
+    /**
+     * 그리기용 컨텍스트. 넘겨주는 순간 픽셀이 바뀔 수 있다고 보고 직렬화 캐시를
+     * 버린다. 실제로 안 그렸어도 손해는 재직렬화 한 번뿐이고, 낡은 스냅샷을
+     * 저장하는 일은 절대 없다. 읽기 전용 경로(getPixels)는 캐시를 유지한다.
+     */
     getCtx() {
+      this.revision++;
       return this.ctx;
     }
     clear(x = 0, y = 0, w = this.width, h = this.height) {
+      this.revision++;
       this.ctx.clearRect(x, y, w, h);
     }
     getPixels(x, y, w, h) {
       return this.ctx.getImageData(x, y, w, h);
     }
     putPixels(img, x, y) {
+      this.revision++;
       let out = img;
       if (typeof ImageData !== "undefined" && !(img instanceof ImageData)) {
         out = new ImageData(img.data, img.width, img.height);
@@ -567,16 +604,24 @@ html, body {
       };
     }
     serialize(opts = {}) {
+      const compact = !!opts.compact;
       const meta = this.cloneSnapshotMeta();
+      const cached = this.serializeCache;
+      if (cached && cached.revision === this.revision && cached.compact === compact) {
+        return { ...cached.snapshot, ...meta };
+      }
       const img = this.ctx.getImageData(0, 0, this.width, this.height);
-      if (!opts.compact) {
-        return { ...meta, rawRGBA: encodeBase64(img.data) };
+      let snapshot;
+      if (!compact) {
+        snapshot = { ...meta, rawRGBA: encodeBase64(img.data) };
+      } else if (isAllTransparent(img.data)) {
+        snapshot = { ...meta };
+      } else {
+        const rle = rleEncodeRGBA(img.data);
+        snapshot = rle.length < img.data.length ? { ...meta, rleRGBA: encodeBase64(rle) } : { ...meta, rawRGBA: encodeBase64(img.data) };
       }
-      if (isAllTransparent(img.data)) {
-        return { ...meta };
-      }
-      const rle = rleEncodeRGBA(img.data);
-      return { ...meta, rleRGBA: encodeBase64(rle) };
+      this.serializeCache = { revision: this.revision, compact, snapshot };
+      return snapshot;
     }
     static deserialize(snap, factory) {
       const layer = new _Layer({
@@ -609,8 +654,9 @@ html, body {
     return true;
   }
   function rleEncodeRGBA(data) {
-    const out = [];
     const n = data.length;
+    const out = new Uint8ClampedArray(Math.ceil(n / 4) * 6);
+    let o = 0;
     let i = 0;
     while (i < n) {
       const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
@@ -620,17 +666,28 @@ html, body {
         count++;
         j += 4;
       }
-      out.push(count >> 8 & 255, count & 255, r, g, b, a);
+      out[o++] = count >> 8 & 255;
+      out[o++] = count & 255;
+      out[o++] = r;
+      out[o++] = g;
+      out[o++] = b;
+      out[o++] = a;
       i = j;
     }
-    return new Uint8ClampedArray(out);
+    return out.subarray(0, o);
   }
   function rleDecodeRGBA(src, expectedBytes) {
+    if (src.length % 6 !== 0) {
+      throw new Error(`rleDecodeRGBA: \uC190\uC0C1\uB41C RLE \uAE38\uC774 ${src.length} (6\uC758 \uBC30\uC218\uAC00 \uC544\uB2D8)`);
+    }
     const out = new Uint8ClampedArray(expectedBytes);
     let o = 0;
-    for (let i = 0; i + 5 < src.length + 1; i += 6) {
+    for (let i = 0; i < src.length; i += 6) {
       const count = (src[i] << 8 | src[i + 1]) & 65535;
       const r = src[i + 2], g = src[i + 3], b = src[i + 4], a = src[i + 5];
+      if (o + count * 4 > expectedBytes) {
+        throw new Error(`rleDecodeRGBA: \uAE30\uB300 \uD06C\uAE30 ${expectedBytes} \uB97C \uB118\uB294 \uB370\uC774\uD130`);
+      }
       for (let k = 0; k < count; k++) {
         out[o++] = r;
         out[o++] = g;
@@ -783,12 +840,6 @@ html, body {
         writable: true,
         value: void 0
       });
-      Object.defineProperty(this, "dirty", {
-        enumerable: true,
-        configurable: true,
-        writable: true,
-        value: Rect.empty()
-      });
       this.width = width;
       this.height = height;
       this.factory = factory;
@@ -803,7 +854,6 @@ html, body {
       this.width = width;
       this.height = height;
       this.activeId = activeId ?? (this.layers[0]?.id ?? null);
-      this.dirty = Rect.create(0, 0, width, height);
       this.emit("change", { reason: "reset" });
     }
     add(layer, index) {
@@ -881,14 +931,14 @@ html, body {
       l.name = name;
       this.emit("change", { reason: "rename" });
     }
+    /**
+     * 다시 그려야 할 영역을 알린다.
+     * 합성은 항상 전체 프레임으로 한다 — 표시 캔버스는 프로젝트 크기에 배율을
+     * 걸어 그리므로, 부분 갱신을 하면 배율 경계에서 지워지지 않은 픽셀이 남는다.
+     * 그래서 dirty 영역을 누적해 두는 대신 이벤트로만 흘려보낸다.
+     */
     markDirty(rect) {
-      this.dirty = Rect.union(this.dirty, Rect.intersect(rect, Rect.create(0, 0, this.width, this.height)));
-      this.emit("dirty", { rect: this.dirty });
-    }
-    consumeDirty() {
-      const r = this.dirty;
-      this.dirty = Rect.empty();
-      return r;
+      this.emit("dirty", { rect: Rect.intersect(rect, Rect.create(0, 0, this.width, this.height)) });
     }
     /**
      * Composite all visible layers, bottom-to-top, into target ctx.
@@ -1552,6 +1602,54 @@ html, body {
       }
       return { r: 0, g: 0, b: 0, a: 255 };
     },
+    /**
+     * parse 와 같지만 인식하지 못한 입력에 검정 대신 null 을 돌려준다.
+     * 사용자가 색을 직접 입력하는 경로(배경 제거 프롬프트 등)는 반드시 이걸 써야
+     * 한다. 예전에는 오타를 내면 조용히 검정이 지워졌다.
+     */
+    tryParse(input) {
+      const s = input.trim().toLowerCase();
+      if (s.length === 0)
+        return null;
+      if (s.startsWith("#")) {
+        const hex = s.slice(1);
+        if (!/^[0-9a-f]+$/.test(hex))
+          return null;
+        const expand = (c) => parseInt(c + c, 16);
+        if (hex.length === 3) {
+          return { r: expand(hex[0]), g: expand(hex[1]), b: expand(hex[2]), a: 255 };
+        }
+        if (hex.length === 6 || hex.length === 8) {
+          return {
+            r: parseInt(hex.slice(0, 2), 16),
+            g: parseInt(hex.slice(2, 4), 16),
+            b: parseInt(hex.slice(4, 6), 16),
+            a: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) : 255
+          };
+        }
+        return null;
+      }
+      const m = s.match(/^rgba?\(([^)]+)\)$/);
+      if (!m)
+        return null;
+      const parts = m[1].split(",").map((p) => parseFloat(p.trim()));
+      if (parts.length < 3 || parts.some((n) => !Number.isFinite(n)))
+        return null;
+      return {
+        r: Math.round(parts[0]),
+        g: Math.round(parts[1]),
+        b: Math.round(parts[2]),
+        a: parts[3] !== void 0 ? Math.round(parts[3] * 255) : 255
+      };
+    },
+    /**
+     * 허용오차(0~128)를 RGBA 제곱거리 임계값으로 바꾼다.
+     * 채우기와 그라디언트가 같은 "허용" 값을 같은 뜻으로 쓰도록 여기 하나로 모았다
+     * (예전에는 채우기만 ×3 이라 같은 값이 더 좁게 동작했다). 채널이 4개이므로 ×4.
+     */
+    toleranceSq(tolerance) {
+      return tolerance * tolerance * 4;
+    },
     toCss(c) {
       return `rgba(${c.r},${c.g},${c.b},${(c.a / 255).toFixed(3)})`;
     },
@@ -2086,7 +2184,7 @@ html, body {
       const replacement = ctx.settings.color;
       if (target[0] === replacement.r && target[1] === replacement.g && target[2] === replacement.b && target[3] === replacement.a)
         return;
-      const tol2 = ctx.settings.tolerance * ctx.settings.tolerance * 3;
+      const tol2 = Color.toleranceSq(ctx.settings.tolerance);
       const visited = new Uint8Array(w * h);
       let minX = w, minY = h, maxX = -1, maxY = -1;
       const matches = (x, y) => {
@@ -2185,7 +2283,7 @@ html, body {
     const tg = data[startIdx + 1];
     const tb = data[startIdx + 2];
     const ta = data[startIdx + 3];
-    const tol2 = tolerance * tolerance * 4;
+    const tol2 = Color.toleranceSq(tolerance);
     const matches = (x, y) => {
       if (x < 0 || y < 0 || x >= width || y >= height)
         return false;
@@ -2274,12 +2372,30 @@ html, body {
       const bbox = newBbox(minX < 0 ? 0 : minX, minY < 0 ? 0 : minY);
       if (maxX >= 0)
         expandBbox(bbox, maxX, maxY);
+      const rect = maxX >= 0 ? Rect.create(minX, minY, maxX - minX + 1, maxY - minY + 1) : Rect.empty();
+      let count = 0;
+      for (let y = rect.y; y < rect.y + rect.h; y++) {
+        for (let x = rect.x; x < rect.x + rect.w; x++) {
+          if (mask[y * layer.width + x])
+            count++;
+        }
+      }
+      const maskPixels = new Int32Array(count);
+      let k = 0;
+      for (let y = rect.y; y < rect.y + rect.h; y++) {
+        for (let x = rect.x; x < rect.x + rect.w; x++) {
+          const idx = y * layer.width + x;
+          if (mask[idx])
+            maskPixels[k++] = idx;
+        }
+      }
       this.drag = {
         layer,
         shadow: shadow.canvas,
         shadowCtx: shadow.ctx,
         start: { x: p.x, y: p.y },
-        mask,
+        maskPixels,
+        rect,
         bbox
       };
     }
@@ -2313,31 +2429,34 @@ html, body {
       const len2 = dx * dx + dy * dy;
       if (len2 < 1)
         return;
+      const rect = drag.rect;
+      if (Rect.isEmpty(rect))
+        return;
       const lctx = layer.getCtx();
-      const region = lctx.getImageData(0, 0, layer.width, layer.height);
-      for (let y = 0; y < layer.height; y++) {
-        for (let x = 0; x < layer.width; x++) {
-          if (!drag.mask[y * layer.width + x])
-            continue;
-          const i = (y * layer.width + x) * 4;
-          const wasEmpty = region.data[i + 3] === 0;
-          const px = x - drag.start.x;
-          const py = y - drag.start.y;
-          let t = (px * dx + py * dy) / len2;
-          if (t < 0)
-            t = 0;
-          if (t > 1)
-            t = 1;
-          const c = sampleGradient(ctx.settings.gradientStops, t);
-          region.data[i] = c.r;
-          region.data[i + 1] = c.g;
-          region.data[i + 2] = c.b;
-          if (wasEmpty)
-            region.data[i + 3] = c.a;
-        }
+      const region = lctx.getImageData(rect.x, rect.y, rect.w, rect.h);
+      const w = layer.width;
+      for (let n = 0; n < drag.maskPixels.length; n++) {
+        const idx = drag.maskPixels[n];
+        const x = idx % w;
+        const y = (idx - x) / w;
+        const i = ((y - rect.y) * rect.w + (x - rect.x)) * 4;
+        const wasEmpty = region.data[i + 3] === 0;
+        const px = x - drag.start.x;
+        const py = y - drag.start.y;
+        let t = (px * dx + py * dy) / len2;
+        if (t < 0)
+          t = 0;
+        if (t > 1)
+          t = 1;
+        const c = sampleGradient(ctx.settings.gradientStops, t);
+        region.data[i] = c.r;
+        region.data[i + 1] = c.g;
+        region.data[i + 2] = c.b;
+        if (wasEmpty)
+          region.data[i + 3] = c.a;
       }
-      lctx.putImageData(region, 0, 0);
-      ctx.stack.markDirty(Rect.create(0, 0, layer.width, layer.height));
+      lctx.putImageData(region, rect.x, rect.y);
+      ctx.stack.markDirty(rect);
     }
   };
 
@@ -2720,11 +2839,12 @@ html, body {
       const input = g.document.createElement("input");
       input.type = "text";
       input.placeholder = "\uD14D\uC2A4\uD2B8 \uC785\uB825 \uD6C4 Enter";
-      const canvas = ctx.stack._canvasEl ?? g["document"];
+      const screenX = p.clientX ?? p.x;
+      const screenY = p.clientY ?? p.y;
       input.style.cssText = [
         "position:fixed",
-        `left:${Math.min(p.x + 8, window.innerWidth - 220)}px`,
-        `top:${Math.min(p.y + 4, window.innerHeight - 50)}px`,
+        `left:${Math.min(screenX + 8, window.innerWidth - 220)}px`,
+        `top:${Math.min(screenY + 4, window.innerHeight - 50)}px`,
         "width:200px",
         "z-index:9999",
         "font-size:16px",
@@ -2734,11 +2854,17 @@ html, body {
         "background:#fff",
         "color:#000"
       ].join(";");
+      let done = false;
       const cleanup = () => {
+        if (done)
+          return;
+        done = true;
         if (input.parentNode)
           input.parentNode.removeChild(input);
       };
       const commit = () => {
+        if (done)
+          return;
         const text = input.value.trim();
         cleanup();
         if (text.length > 0)
@@ -2776,8 +2902,10 @@ html, body {
       } else {
         lctx.fillRect(p.x, p.y, text.length * Math.round(fontPx * 0.6), fontPx);
       }
+      const measure = lctx.measureText;
+      const textW = typeof measure === "function" ? Math.ceil(measure.call(lctx, text).width) : text.length * Math.round(fontPx * 0.6);
       lctx.restore();
-      const approxW = text.length * Math.round(fontPx * 0.6) + 4;
+      const approxW = textW + 4;
       const bbox = newBbox(p.x, p.y);
       expandBbox(bbox, p.x + approxW, p.y + fontPx);
       ctx.stack.markDirty({ x: Math.floor(p.x), y: Math.floor(p.y), w: approxW + 4, h: fontPx + 4 });
@@ -2925,7 +3053,9 @@ html, body {
           buttons: e.buttons,
           shift: e.shiftKey,
           ctrl: e.ctrlKey || e.metaKey,
-          alt: e.altKey
+          alt: e.altKey,
+          clientX: e.clientX,
+          clientY: e.clientY
         };
         const ctx = this.bindings.getToolContext();
         const pointerId = e.pointerId ?? 0;
@@ -3000,6 +3130,7 @@ html, body {
     { key: "k", action: "tool:eyedropper", description: "Eyedropper" },
     { key: "u", action: "tool:smudge", description: "Smudge" },
     { key: "p", action: "tool:pattern", description: "Pattern brush" },
+    { key: "t", action: "tool:text", description: "Text" },
     { key: "[", action: "brush:dec", description: "Decrease brush size" },
     { key: "]", action: "brush:inc", description: "Increase brush size" },
     { key: "x", action: "color:swap", description: "Swap colors" },
@@ -3011,21 +3142,38 @@ html, body {
     { key: "Delete", action: "layer:clear", description: "Clear layer" },
     { key: "m", action: "tool:mirror-toggle", description: "Toggle mirror" }
   ];
-  function matchShortcut(e) {
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    const ctrl = e.ctrlKey || e.metaKey;
-    for (const s of SHORTCUTS) {
-      if (s.key !== key)
-        continue;
-      if (!!s.shift !== e.shiftKey)
-        continue;
-      if (!!s.ctrl !== ctrl)
-        continue;
-      if (!!s.alt !== e.altKey)
-        continue;
-      return s;
-    }
+  function keyFromCode(code) {
+    if (!code)
+      return null;
+    if (/^Key[A-Z]$/.test(code))
+      return code.slice(3).toLowerCase();
+    if (code === "BracketLeft")
+      return "[";
+    if (code === "BracketRight")
+      return "]";
+    if (code === "Delete")
+      return "Delete";
     return null;
+  }
+  function matchShortcut(e) {
+    const ctrl = e.ctrlKey || e.metaKey;
+    const find = (key) => {
+      if (key === null)
+        return null;
+      for (const s of SHORTCUTS) {
+        if (s.key !== key)
+          continue;
+        if (!!s.shift !== e.shiftKey)
+          continue;
+        if (!!s.ctrl !== ctrl)
+          continue;
+        if (!!s.alt !== e.altKey)
+          continue;
+        return s;
+      }
+      return null;
+    };
+    return find(e.key.length === 1 ? e.key.toLowerCase() : e.key) ?? find(keyFromCode(e.code));
   }
 
   // dist/src/storage/IndexedDBStore.js
@@ -3034,6 +3182,11 @@ html, body {
   var STORE_PROJECTS = "projects";
   var STORE_AUTOSAVES = "autosaves";
   var STORE_META = "meta";
+  var PROJECT_INDEX_KEY = "projectIndex";
+  function toMeta(p) {
+    const { id, name, createdAt, updatedAt, width, height, thumb } = p;
+    return { id, name, createdAt, updatedAt, width, height, thumb };
+  }
   var IndexedDBStore = class {
     constructor(idb) {
       Object.defineProperty(this, "db", {
@@ -3088,24 +3241,42 @@ html, body {
         tx.onabort = () => reject(tx.error);
       });
     }
-    putProject(p) {
-      return this.withStore(STORE_PROJECTS, "readwrite", (s) => s.put(p));
+    async putProject(p) {
+      const key = await this.withStore(STORE_PROJECTS, "readwrite", (s) => s.put(p));
+      await this.updateIndex((list) => [...list.filter((m) => m.id !== p.id), toMeta(p)]);
+      return key;
     }
     getProject(id) {
       return this.withStore(STORE_PROJECTS, "readonly", (s) => s.get(id));
     }
-    deleteProject(id) {
-      return this.withStore(STORE_PROJECTS, "readwrite", (s) => s.delete(id));
+    async deleteProject(id) {
+      await this.withStore(STORE_PROJECTS, "readwrite", (s) => s.delete(id));
+      await this.deleteAutoSave(id);
+      await this.updateIndex((list) => list.filter((m) => m.id !== id));
     }
     async listProjects() {
+      const idx = await this.getMeta(PROJECT_INDEX_KEY);
+      if (Array.isArray(idx))
+        return [...idx].sort((a, b) => b.updatedAt - a.updatedAt);
       const all = await this.withStore(STORE_PROJECTS, "readonly", (s) => s.getAll());
-      return (all ?? []).map(({ id, name, createdAt, updatedAt, width, height, thumb }) => ({ id, name, createdAt, updatedAt, width, height, thumb })).sort((a, b) => b.updatedAt - a.updatedAt);
+      const metas = (all ?? []).map(toMeta);
+      await this.putMeta(PROJECT_INDEX_KEY, metas);
+      return metas.sort((a, b) => b.updatedAt - a.updatedAt);
+    }
+    /** 목록 인덱스를 읽고-바꾸고-쓴다. 인덱스가 없으면 listProjects 가 복구한다. */
+    async updateIndex(fn) {
+      const current = await this.getMeta(PROJECT_INDEX_KEY);
+      const base = Array.isArray(current) ? current : await this.listProjects();
+      await this.putMeta(PROJECT_INDEX_KEY, fn(base));
     }
     putAutoSave(a) {
       return this.withStore(STORE_AUTOSAVES, "readwrite", (s) => s.put(a));
     }
     getAutoSave(id) {
       return this.withStore(STORE_AUTOSAVES, "readonly", (s) => s.get(id));
+    }
+    deleteAutoSave(id) {
+      return this.withStore(STORE_AUTOSAVES, "readwrite", (s) => s.delete(id));
     }
     putMeta(key, value) {
       return this.withStore(STORE_META, "readwrite", (s) => s.put(value, key));
@@ -3214,14 +3385,20 @@ html, body {
     async flushNow() {
       if (!this.projectId)
         return;
+      const projectId = this.projectId;
+      this.dirty = false;
       const payload = {
-        id: this.projectId,
+        id: projectId,
         savedAt: Date.now(),
         projectJson: this.opts.serialize()
       };
-      await this.store.putAutoSave(payload);
-      await this.store.putMeta("lastOpenProjectId", this.projectId);
-      this.dirty = false;
+      try {
+        await this.store.putAutoSave(payload);
+        await this.store.putMeta("lastOpenProjectId", projectId);
+      } catch (e) {
+        this.dirty = true;
+        throw e;
+      }
     }
     isDirty() {
       return this.dirty;
@@ -3236,8 +3413,19 @@ html, body {
     },
     decode(json) {
       const obj = JSON.parse(json);
-      if (!obj.version)
+      if (!obj || typeof obj !== "object")
+        throw new Error("ProjectCodec.decode: not an object");
+      if (typeof obj.version !== "string" || obj.version.length === 0) {
         throw new Error("ProjectCodec.decode: missing version");
+      }
+      const meta = obj.meta;
+      if (!meta || typeof meta !== "object")
+        throw new Error("ProjectCodec.decode: missing meta");
+      if (!Number.isFinite(meta.width) || !Number.isFinite(meta.height) || meta.width < 1 || meta.height < 1) {
+        throw new Error("ProjectCodec.decode: invalid project size");
+      }
+      if (!Array.isArray(obj.layers))
+        throw new Error("ProjectCodec.decode: layers is not an array");
       return obj;
     },
     buildState(opts) {
@@ -3740,8 +3928,18 @@ ${t.description}`;
         writable: true,
         value: handlers
       });
+      Object.defineProperty(this, "generation", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: 0
+      });
     }
     async render() {
+      const gen = ++this.generation;
+      const projects = await this.store.listProjects();
+      if (gen !== this.generation)
+        return;
       this.root.innerHTML = "";
       const header = document.createElement("div");
       header.className = "panel-header";
@@ -3797,7 +3995,6 @@ ${t.description}`;
       this.root.appendChild(importRow);
       const list = document.createElement("div");
       list.className = "project-list";
-      const projects = await this.store.listProjects();
       if (projects.length === 0) {
         const empty = document.createElement("div");
         empty.className = "project-empty";
@@ -3807,9 +4004,38 @@ ${t.description}`;
         for (const p of projects) {
           const row = document.createElement("div");
           row.className = "project-row";
-          row.textContent = `${p.name} (${new Date(p.updatedAt).toLocaleString()})`;
-          row.title = "\uD074\uB9AD\uD558\uC5EC \uBD88\uB7EC\uC624\uAE30";
-          row.addEventListener("click", () => this.handlers.onLoad(p.id));
+          const label = document.createElement("span");
+          label.className = "project-name";
+          label.textContent = `${p.name} (${new Date(p.updatedAt).toLocaleString()})`;
+          label.title = "\uD074\uB9AD\uD558\uC5EC \uBD88\uB7EC\uC624\uAE30";
+          label.addEventListener("click", () => this.handlers.onLoad(p.id));
+          row.appendChild(label);
+          const rename = document.createElement("button");
+          rename.type = "button";
+          rename.className = "project-rename";
+          rename.textContent = "\u270E";
+          rename.title = "\uC774\uB984 \uBCC0\uACBD";
+          rename.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const next = prompt("\uC0C8 \uC774\uB984", p.name);
+            if (next === null)
+              return;
+            const trimmed = next.trim();
+            if (trimmed.length === 0)
+              return;
+            this.handlers.onRename(p.id, trimmed);
+          });
+          row.appendChild(rename);
+          const del = document.createElement("button");
+          del.type = "button";
+          del.className = "project-delete";
+          del.textContent = "\u{1F5D1}";
+          del.title = "\uC0AD\uC81C";
+          del.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.handlers.onDelete(p.id);
+          });
+          row.appendChild(del);
           list.appendChild(row);
         }
       }
@@ -3824,6 +4050,38 @@ ${t.description}`;
     c.height = h;
     return c;
   };
+  function controlValuesFromSettings(s) {
+    const sym = s.symmetry;
+    return {
+      brushSize: String(s.brushSize),
+      tolerance: String(s.tolerance),
+      mirrorX: sym.enabled && sym.axes.includes("x"),
+      mirrorY: sym.enabled && sym.axes.includes("y"),
+      patternId: s.patternId
+    };
+  }
+  function canAddLayer(count) {
+    return count < LAYER_LIMIT;
+  }
+  function canRemoveLayer(count) {
+    return count > 1;
+  }
+  var DEFAULT_PROJECT_NAME = "Untitled";
+  var MAX_PROJECT_SIZE = 8192;
+  function parseProjectSize(input, fallback) {
+    if (input === null)
+      return null;
+    const trimmed = input.trim();
+    if (trimmed === "")
+      return fallback;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n))
+      return null;
+    const i = Math.floor(n);
+    if (i < 1)
+      return null;
+    return Math.min(i, MAX_PROJECT_SIZE);
+  }
   var OpacityDrag = class {
     constructor() {
       Object.defineProperty(this, "start", {
@@ -3876,6 +4134,18 @@ ${t.description}`;
         writable: true,
         value: new OpacityDrag()
       });
+      Object.defineProperty(this, "refitCanvas", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: null
+      });
+      Object.defineProperty(this, "syncControls", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: null
+      });
       Object.defineProperty(this, "projectId", {
         enumerable: true,
         configurable: true,
@@ -3886,7 +4156,7 @@ ${t.description}`;
         enumerable: true,
         configurable: true,
         writable: true,
-        value: "Untitled"
+        value: DEFAULT_PROJECT_NAME
       });
       Object.defineProperty(this, "createdAt", {
         enumerable: true,
@@ -4051,6 +4321,7 @@ ${t.description}`;
         this.displayCanvas.resizeDisplay(cssW, cssH, window.devicePixelRatio || 1);
         this.scheduleRender();
       };
+      this.refitCanvas = fitCanvasToContainer;
       fitCanvasToContainer();
       new ResizeObserver(() => fitCanvasToContainer()).observe(canvasArea);
       this.input = new InputAdapter(this.displayCanvas, canvasEl, {
@@ -4119,7 +4390,9 @@ ${t.description}`;
         onExportJson: () => this.exportJson(),
         onImportJson: (f) => this.importJson(f),
         onImportPng: (f) => this.importPng(f),
-        onChromaKey: () => this.applyChromaKey()
+        onChromaKey: () => this.applyChromaKey(),
+        onDelete: (id) => void this.deleteProject(id),
+        onRename: (id, name) => void this.renameProject(id, name)
       });
       void this.projectPanel.render();
       const rightPanelEl = root.querySelector("#right-panel");
@@ -4174,6 +4447,17 @@ ${t.description}`;
       };
       mx.addEventListener("change", updateMirror);
       my.addEventListener("change", updateMirror);
+      this.syncControls = () => {
+        const v = controlValuesFromSettings(this.settings);
+        brushSize.value = v.brushSize;
+        tol.value = v.tolerance;
+        mx.checked = v.mirrorX;
+        my.checked = v.mirrorY;
+        if (v.patternId)
+          patternSelect.value = v.patternId;
+        this.palette.set(this.settings.color);
+        this.updateBrushControls();
+      };
       this.autoSaver = new AutoSaver(this.store, this.stack, this.history, {
         intervalMs: 5e3,
         serialize: () => ProjectCodec.encode(this.buildState())
@@ -4198,6 +4482,9 @@ ${t.description}`;
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden")
           void this.autoSaver.flushNow();
+      });
+      window.addEventListener("pagehide", () => {
+        void this.autoSaver.flushNow();
       });
       window.addEventListener("beforeunload", () => {
         void this.autoSaver.flushNow();
@@ -4304,7 +4591,7 @@ ${t.description}`;
       };
     }
     addLayer() {
-      if (this.stack.size() >= LAYER_LIMIT) {
+      if (!canAddLayer(this.stack.size())) {
         this.flashStatus(`\u26A0\uFE0F  \uCD5C\uB300 ${LAYER_LIMIT}\uAC1C \uB808\uC774\uC5B4\uAE4C\uC9C0 \uB9CC\uB4E4 \uC218 \uC788\uC2B5\uB2C8\uB2E4`, 2500);
         return;
       }
@@ -4323,6 +4610,10 @@ ${t.description}`;
       const layer = this.stack.get(id);
       if (!layer)
         return;
+      if (!canRemoveLayer(this.stack.size())) {
+        this.flashStatus("\u26A0\uFE0F  \uB9C8\uC9C0\uB9C9 \uB808\uC774\uC5B4\uB294 \uC0AD\uC81C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4", 2500);
+        return;
+      }
       const index = this.stack.getAll().findIndex((l) => l.id === id);
       this.history.execute(new RemoveLayerCommand({ snapshot: historySnapshot(layer), index }), { stack: this.stack });
     }
@@ -4433,6 +4724,8 @@ ${t.description}`;
       this.previewLayer = new Layer({ name: "Preview", width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
       if (this.displayCanvas)
         this.displayCanvas.setProjectSize(this.projectWidth, this.projectHeight);
+      this.refitCanvas?.();
+      this.syncControls?.();
       if (this.layerPanel)
         this.layerPanel.render();
       if (this.historyPanel)
@@ -4442,18 +4735,35 @@ ${t.description}`;
       this.scheduleRender();
     }
     newProject() {
-      const w = parseInt(prompt("Width?", String(this.projectWidth)) ?? String(this.projectWidth), 10);
-      const h = parseInt(prompt("Height?", String(this.projectHeight)) ?? String(this.projectHeight), 10);
+      const wIn = prompt("\uAC00\uB85C \uD06C\uAE30?", String(this.projectWidth));
+      if (wIn === null)
+        return;
+      const hIn = prompt("\uC138\uB85C \uD06C\uAE30?", String(this.projectHeight));
+      if (hIn === null)
+        return;
+      const w = parseProjectSize(wIn, this.projectWidth);
+      const h = parseProjectSize(hIn, this.projectHeight);
+      if (w === null || h === null) {
+        this.flashStatus(`\u26A0\uFE0F \uD06C\uAE30\uB294 1~${MAX_PROJECT_SIZE} \uC0AC\uC774\uC758 \uC22B\uC790\uC5EC\uC57C \uD569\uB2C8\uB2E4`, 3e3);
+        return;
+      }
       this.projectId = Uid.next();
-      this.projectName = "Untitled";
+      this.projectName = DEFAULT_PROJECT_NAME;
       this.createdAt = Date.now();
       if (this.autoSaver)
         this.autoSaver.setProjectId(this.projectId);
       this.newProjectInternal(w, h);
+      this.displayCanvas?.setProjectSize(w, h);
+      this.refitCanvas?.();
       this.scheduleRender();
       void this.saveProject();
     }
     async saveProject() {
+      if (this.projectName === DEFAULT_PROJECT_NAME) {
+        const name = prompt("\uD504\uB85C\uC81D\uD2B8 \uC774\uB984", DEFAULT_PROJECT_NAME);
+        if (name !== null && name.trim().length > 0)
+          this.projectName = name.trim();
+      }
       const state = this.buildState();
       const json = ProjectCodec.encode(state);
       await this.store.putProject({
@@ -4467,6 +4777,40 @@ ${t.description}`;
       });
       await this.store.putMeta("lastOpenProjectId", this.projectId);
       void this.projectPanel.render();
+    }
+    /** 프로젝트와 그 autosave 를 함께 지운다. */
+    async deleteProject(id) {
+      try {
+        await this.store.deleteProject(id);
+        if (id === this.projectId) {
+          await this.store.putMeta("lastOpenProjectId", void 0);
+        }
+        await this.projectPanel.render();
+        this.flashStatus("\u2713 \uD504\uB85C\uC81D\uD2B8\uB97C \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4", 1800);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.flashStatus(`\u26A0\uFE0F \uC0AD\uC81C \uC2E4\uD328: ${msg}`, 3e3);
+        console.error("deleteProject failed", e);
+      }
+    }
+    /** 저장된 프로젝트의 이름을 바꾼다. 저장본 JSON 안의 meta.name 도 함께 고친다. */
+    async renameProject(id, name) {
+      try {
+        const p = await this.store.getProject(id);
+        if (!p)
+          return;
+        const state = ProjectCodec.decode(p.projectJson);
+        state.meta.name = name;
+        await this.store.putProject({ ...p, name, updatedAt: Date.now(), projectJson: ProjectCodec.encode(state) });
+        if (id === this.projectId)
+          this.projectName = name;
+        await this.projectPanel.render();
+        this.flashStatus(`\u2713 \uC774\uB984\uC744 "${name}" \uB85C \uBC14\uAFE8\uC2B5\uB2C8\uB2E4`, 1800);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.flashStatus(`\u26A0\uFE0F \uC774\uB984 \uBCC0\uACBD \uC2E4\uD328: ${msg}`, 3e3);
+        console.error("renameProject failed", e);
+      }
     }
     async loadProject(id) {
       const p = await this.store.getProject(id);
@@ -4511,6 +4855,10 @@ ${t.description}`;
     }
     async importPng(file) {
       try {
+        if (!canAddLayer(this.stack.size())) {
+          this.flashStatus(`\u26A0\uFE0F  \uCD5C\uB300 ${LAYER_LIMIT}\uAC1C \uB808\uC774\uC5B4\uAE4C\uC9C0 \uB9CC\uB4E4 \uC218 \uC788\uC2B5\uB2C8\uB2E4`, 2500);
+          return;
+        }
         const layer = await importPngFile(file, this.projectWidth, this.projectHeight, realCanvasFactory, file.name);
         this.history.execute(new AddLayerCommand({ snapshot: historySnapshot(layer), index: this.stack.size() }), { stack: this.stack });
         this.scheduleRender();
@@ -4525,12 +4873,28 @@ ${t.description}`;
       const layer = this.stack.getActive();
       if (!layer)
         return;
-      const colorIn = prompt("Background color (hex)?", "#ffffff") ?? "#ffffff";
-      const tolStr = prompt("Tolerance (0-200)?", "20") ?? "20";
-      const featherStr = prompt("Feather (0-100)?", "10") ?? "10";
-      const key = Color.parse(colorIn);
-      const tol = parseInt(tolStr, 10);
-      const feather = parseInt(featherStr, 10);
+      const colorIn = prompt("\uBC30\uACBD\uC0C9 (\uC608: #ffffff)", "#ffffff");
+      if (colorIn === null)
+        return;
+      const key = Color.tryParse(colorIn);
+      if (!key) {
+        this.flashStatus("\u26A0\uFE0F \uC0C9 \uD615\uC2DD\uC774 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4 (#rgb, #rrggbb, rgba(...))", 3500);
+        return;
+      }
+      const tolStr = prompt("\uD5C8\uC6A9\uC624\uCC28 (0-200)", "20");
+      if (tolStr === null)
+        return;
+      const featherStr = prompt("\uAC00\uC7A5\uC790\uB9AC \uBD80\uB4DC\uB7FD\uAC8C (0-100)", "10");
+      if (featherStr === null)
+        return;
+      const clampNum = (v, fallback, min, max) => {
+        const n = Number(v.trim());
+        if (!Number.isFinite(n))
+          return fallback;
+        return Math.max(min, Math.min(max, Math.floor(n)));
+      };
+      const tol = clampNum(tolStr, 20, 0, 200);
+      const feather = clampNum(featherStr, 10, 0, 100);
       const before = layer.getPixels(0, 0, layer.width, layer.height);
       const out = removeBackground(before, key, tol, feather);
       layer.putPixels(out, 0, 0);
