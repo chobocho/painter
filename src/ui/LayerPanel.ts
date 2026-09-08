@@ -5,7 +5,10 @@ export interface LayerPanelHandlers {
   onRemove: (id: string) => void;
   onSelect: (id: string) => void;
   onToggleVisible: (id: string, visible: boolean) => void;
+  /** 드래그가 끝났을 때(change) 한 번만. 히스토리에 기록한다. */
   onOpacity: (id: string, opacity: number) => void;
+  /** 드래그 중(input) 마다. 히스토리 없이 화면만 갱신한다. */
+  onOpacityPreview: (id: string, opacity: number) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onRename: (id: string, name: string) => void;
@@ -15,13 +18,16 @@ export const LAYER_LIMIT = 5;
 
 export class LayerPanel {
   private collapsed: boolean = false;
+  // 투명도 드래그 중에는 재렌더를 막는다. 재렌더하면 잡고 있던 슬라이더 DOM 이
+  // 파괴되어 터치 조작이 그 자리에서 끊긴다.
+  private draggingOpacity: boolean = false;
 
   constructor(
     private root: HTMLElement,
     private stack: LayerStack,
     private handlers: LayerPanelHandlers
   ) {
-    stack.on("change", () => this.render());
+    stack.on("change", () => { if (!this.draggingOpacity) this.render(); });
   }
 
   isCollapsed(): boolean { return this.collapsed; }
@@ -118,8 +124,16 @@ export class LayerPanel {
       opacity.value = String(layer.opacity);
       opacity.className = "layer-opacity";
       opacity.title = "투명도";
+      // input 은 미리보기, change 에서만 커밋한다. 예전에는 input 마다 히스토리
+      // 커맨드를 만들어 드래그 한 번에 수십 개 항목이 쌓였다.
       opacity.addEventListener("input", (e) => {
         e.stopPropagation();
+        this.draggingOpacity = true;
+        this.handlers.onOpacityPreview(layer.id, parseFloat(opacity.value));
+      });
+      opacity.addEventListener("change", (e) => {
+        e.stopPropagation();
+        this.draggingOpacity = false;
         this.handlers.onOpacity(layer.id, parseFloat(opacity.value));
       });
       opacity.addEventListener("click", (e) => e.stopPropagation());

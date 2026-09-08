@@ -83,6 +83,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 185 passed, 0 failed
 - **비고:** 고아 drag 로 인한 `ctx.save()` 미복구·커밋 누락·shadow 누수 경로 제거.
 
+### [2026-09-08 04:55] 리뷰 #9 투명도 슬라이더 히스토리 폭주·재렌더 수정
+- **기획:** `input`은 미리보기(`OpacityDrag.preview`), `change`에서만 커맨드 1개 커밋. 드래그 중에는 패널 재렌더를 막아 슬라이더 DOM 유지.
+- **TC:** (정상) input 3회 → 커밋 0, change → 커밋 1, undo 시 드래그 이전 값 복원. (엣지) 값 변화 없음, preview 없이 commit만.
+- **개발:** `src/ui/LayerPanel.ts`, `src/app/PainterApp.ts`, `src/test/round10.test.ts`, `src/test/ui.test.ts`
+- **검증:** 190 passed, 0 failed
+- **비고:** `LayerPanelHandlers`에 `onOpacityPreview` 추가(내부 인터페이스).
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

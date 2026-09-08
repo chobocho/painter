@@ -81,7 +81,7 @@ describe("LayerPanel toggle", () => {
     stack.add(new Layer({ width: 8, height: 8, factory }));
     const panel = new LayerPanel(rootEl(), stack, {
       onAdd: () => {}, onRemove: () => {}, onSelect: () => {},
-      onToggleVisible: () => {}, onOpacity: () => {},
+      onToggleVisible: () => {}, onOpacity: () => {}, onOpacityPreview: () => {},
       onMoveUp: () => {}, onMoveDown: () => {}, onRename: () => {},
     });
     assertFalse(panel.isCollapsed());
@@ -92,7 +92,7 @@ describe("LayerPanel toggle", () => {
     stack.add(new Layer({ width: 8, height: 8, factory }));
     const panel = new LayerPanel(rootEl(), stack, {
       onAdd: () => {}, onRemove: () => {}, onSelect: () => {},
-      onToggleVisible: () => {}, onOpacity: () => {},
+      onToggleVisible: () => {}, onOpacity: () => {}, onOpacityPreview: () => {},
       onMoveUp: () => {}, onMoveDown: () => {}, onRename: () => {},
     });
     panel.toggle();
@@ -108,7 +108,7 @@ describe("LayerPanel toggle", () => {
     const root = rootEl();
     const panel = new LayerPanel(root, stack, {
       onAdd: () => {}, onRemove: () => {}, onSelect: () => {},
-      onToggleVisible: () => {}, onOpacity: () => {},
+      onToggleVisible: () => {}, onOpacity: () => {}, onOpacityPreview: () => {},
       onMoveUp: () => {}, onMoveDown: () => {}, onRename: () => {},
     });
     panel.setCollapsed(true);
@@ -125,7 +125,7 @@ describe("LayerPanel toggle", () => {
     stack.add(new Layer({ width: 8, height: 8, factory }));
     const panel = new LayerPanel(rootEl(), stack, {
       onAdd: () => {}, onRemove: () => {}, onSelect: () => {},
-      onToggleVisible: () => {}, onOpacity: () => {},
+      onToggleVisible: () => {}, onOpacity: () => {}, onOpacityPreview: () => {},
       onMoveUp: () => {}, onMoveDown: () => {}, onRename: () => {},
     });
     panel.setCollapsed(true);

@@ -408,3 +408,168 @@ describe("리뷰 #7 — 멀티터치", () => {
     assertEqual(tool.calls.join(","), "down,cancel", "다른 포인터의 취소는 무시해야 함");
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #9 — 투명도 슬라이더가 input 마다 히스토리 커맨드를 만들고 패널을 통째로
+// 다시 그린다. 드래그 한 번에 수십 개 항목이 쌓이고, 재렌더로 슬라이더 DOM 이
+// 파괴되어 터치 조작이 도중에 끊긴다.
+// ---------------------------------------------------------------------------
+
+import { LayerPanel } from "../ui/LayerPanel.js";
+
+interface FakeEl {
+  tagName: string; className: string; type: string; value: string;
+  min: string; max: string; step: string; title: string; textContent: string;
+  children: FakeEl[]; listeners: Record<string, ((e: any) => void)[]>;
+  [k: string]: any;
+}
+
+/** 리스너를 기억하는 DOM 셰임. ui.test.ts 의 셰임은 addEventListener 가 no-op 이라 이벤트를 못 쏜다. */
+function makeEl(): FakeEl {
+  const el: any = {
+    tagName: "DIV", className: "", type: "", value: "", min: "", max: "", step: "",
+    title: "", textContent: "", checked: false,
+    children: [] as FakeEl[], listeners: {} as Record<string, ((e: any) => void)[]>,
+    style: {}, dataset: {}, attributes: {} as Record<string, string>,
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    _innerHTML: "",
+    get innerHTML() { return this._innerHTML; },
+    set innerHTML(v: string) { this._innerHTML = v; this.children = []; },
+    appendChild(c: FakeEl) { this.children.push(c); return c; },
+    removeChild(c: FakeEl) { const i = this.children.indexOf(c); if (i >= 0) this.children.splice(i, 1); return c; },
+    addEventListener(t: string, f: (e: any) => void) { (this.listeners[t] ||= []).push(f); },
+    removeEventListener() {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    setAttribute(k: string, v: string) { this.attributes[k] = v; },
+  };
+  return el as FakeEl;
+}
+
+function withRichDom<T>(fn: (root: FakeEl) => T): T {
+  const g = globalThis as any;
+  const saved = g.document;
+  g.document = { createElement: (tag: string) => { const e = makeEl(); e.tagName = tag.toUpperCase(); return e; } };
+  try {
+    return fn(makeEl());
+  } finally {
+    g.document = saved;
+  }
+}
+
+function findByClass(root: FakeEl, cls: string): FakeEl | null {
+  for (const c of root.children) {
+    if (c.className === cls) return c;
+    const hit = findByClass(c, cls);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function fire(el: FakeEl, type: string): void {
+  for (const f of el.listeners[type] ?? []) f({ stopPropagation() {}, preventDefault() {}, target: el });
+}
+
+describe("리뷰 #9 — 투명도 슬라이더 이벤트 분리", () => {
+  it("input 은 미리보기만, change 에서만 커밋한다", () => {
+    withRichDom((root) => {
+      const stack = new LayerStack(8, 8, factory);
+      stack.add(new Layer({ name: "L", width: 8, height: 8, factory }));
+      const previews: number[] = [];
+      const commits: number[] = [];
+      const handlers: any = {
+        onAdd() {}, onRemove() {}, onSelect() {}, onToggleVisible() {},
+        onOpacity: (_id: string, o: number) => commits.push(o),
+        onOpacityPreview: (_id: string, o: number) => previews.push(o),
+        onMoveUp() {}, onMoveDown() {}, onRename() {},
+      };
+      const panel = new LayerPanel(root as any, stack, handlers);
+      panel.render();
+
+      const slider = findByClass(root, "layer-opacity");
+      assertTrue(slider !== null, "투명도 슬라이더가 있어야 함");
+      for (const v of ["0.9", "0.7", "0.4"]) { slider!.value = v; fire(slider!, "input"); }
+      assertEqual(commits.length, 0, `드래그 중에는 커밋이 없어야 함 (실제 ${commits.length})`);
+      assertEqual(previews.length, 3, "미리보기는 input 마다 와야 함");
+
+      fire(slider!, "change");
+      assertEqual(commits.length, 1, "손을 뗄 때 한 번만 커밋해야 함");
+      assertEqual(commits[0], 0.4);
+    });
+  });
+
+  it("드래그 중에는 패널을 다시 그리지 않는다", () => {
+    withRichDom((root) => {
+      const stack = new LayerStack(8, 8, factory);
+      const layer = new Layer({ name: "L", width: 8, height: 8, factory });
+      stack.add(layer);
+      const handlers: any = {
+        onAdd() {}, onRemove() {}, onSelect() {}, onToggleVisible() {},
+        onOpacity() {},
+        onOpacityPreview: (id: string, o: number) => stack.setOpacity(id, o),
+        onMoveUp() {}, onMoveDown() {}, onRename() {},
+      };
+      const panel = new LayerPanel(root as any, stack, handlers);
+      panel.render();
+
+      const slider = findByClass(root, "layer-opacity");
+      assertTrue(slider !== null, "투명도 슬라이더가 있어야 함");
+      slider!.value = "0.5";
+      fire(slider!, "input"); // stack "change" 발생 → 예전에는 여기서 재렌더
+      assertTrue(findByClass(root, "layer-opacity") === slider, "슬라이더 DOM 이 살아 있어야 함");
+
+      fire(slider!, "change");
+      stack.setOpacity(layer.id, 0.2); // 드래그가 끝났으니 다시 그려도 된다
+      assertTrue(findByClass(root, "layer-opacity") !== slider, "드래그 후에는 정상 재렌더");
+    });
+  });
+});
+
+describe("리뷰 #9 — 투명도 드래그 커밋", () => {
+  const OpacityDrag = (AppModule as unknown as { OpacityDrag?: any }).OpacityDrag;
+
+  it("드래그 전체가 히스토리 항목 하나가 된다", () => {
+    assertTrue(typeof OpacityDrag === "function", "OpacityDrag 가 있어야 함");
+    const stack = new LayerStack(8, 8, factory);
+    const layer = new Layer({ name: "L", width: 8, height: 8, factory });
+    stack.add(layer);
+    const history = new CommandHistory();
+    const drag = new OpacityDrag();
+
+    for (const v of [0.9, 0.7, 0.4]) drag.preview(stack, layer.id, v);
+    assertEqual(history.size().past, 0, "미리보기는 히스토리를 만들지 않는다");
+    assertEqual(layer.opacity, 0.4, "미리보기는 즉시 반영된다");
+
+    drag.commit(stack, history, layer.id, 0.4);
+    assertEqual(history.size().past, 1, "커밋은 한 개만 만든다");
+    history.undo({ stack });
+    assertEqual(layer.opacity, 1, "undo 는 드래그 이전 값으로 되돌린다");
+  });
+
+  it("값이 그대로면 커맨드를 만들지 않는다", () => {
+    assertTrue(typeof OpacityDrag === "function", "OpacityDrag 가 있어야 함");
+    const stack = new LayerStack(8, 8, factory);
+    const layer = new Layer({ name: "L", width: 8, height: 8, factory });
+    stack.add(layer);
+    const history = new CommandHistory();
+    const drag = new OpacityDrag();
+
+    drag.preview(stack, layer.id, 1);
+    drag.commit(stack, history, layer.id, 1);
+    assertEqual(history.size().past, 0, "변화 없는 드래그는 기록하지 않는다");
+  });
+
+  it("commit 만 불러도(클릭) 이전 값을 before 로 쓴다", () => {
+    assertTrue(typeof OpacityDrag === "function", "OpacityDrag 가 있어야 함");
+    const stack = new LayerStack(8, 8, factory);
+    const layer = new Layer({ name: "L", width: 8, height: 8, factory });
+    stack.add(layer);
+    const history = new CommandHistory();
+    const drag = new OpacityDrag();
+
+    drag.commit(stack, history, layer.id, 0.3);
+    assertEqual(layer.opacity, 0.3);
+    history.undo({ stack });
+    assertEqual(layer.opacity, 1);
+  });
+});

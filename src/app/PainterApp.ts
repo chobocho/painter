@@ -43,6 +43,41 @@ const realCanvasFactory: CanvasFactory = (w, h) => {
  * 레이어 한 장이 약 13MB 문자열이고 브라우저 폴백 경로에서 인코딩·디코딩에
  * 각각 1.6초쯤 걸려 레이어 추가/삭제/PNG 가져오기가 그대로 멈춰 보였다.
  */
+/**
+ * 투명도 슬라이더 드래그 한 번을 히스토리 항목 하나로 묶는다.
+ * preview() 는 화면만 바꾸고, commit() 이 드래그 시작 전 값을 before 로 삼아
+ * 커맨드를 만든다. 값이 그대로면 아무것도 기록하지 않는다.
+ */
+export class OpacityDrag {
+  private start: { id: string; opacity: number } | null = null;
+
+  preview(stack: LayerStack, id: string, opacity: number): void {
+    const layer = stack.get(id);
+    if (!layer) return;
+    if (!this.start || this.start.id !== id) this.start = { id, opacity: layer.opacity };
+    stack.setOpacity(id, opacity);
+  }
+
+  commit(stack: LayerStack, history: CommandHistory, id: string, opacity: number): void {
+    const layer = stack.get(id);
+    if (!layer) return;
+    const beforeOpacity = this.start && this.start.id === id ? this.start.opacity : layer.opacity;
+    this.start = null;
+    if (beforeOpacity === opacity) {
+      stack.setOpacity(id, opacity);
+      return;
+    }
+    history.execute(
+      new SetLayerPropsCommand({
+        layerId: id,
+        before: { visible: layer.visible, opacity: beforeOpacity, name: layer.name },
+        after: { opacity },
+      }),
+      { stack }
+    );
+  }
+}
+
 export function historySnapshot(layer: Layer): LayerSnapshot {
   return layer.serialize({ compact: true });
 }
@@ -57,6 +92,7 @@ export function pickRestoreJson(
 }
 
 export class PainterApp {
+  private opacityDrag = new OpacityDrag();
   private projectId: string = Uid.next();
   private projectName: string = "Untitled";
   private createdAt: number = Date.now();
@@ -184,7 +220,8 @@ export class PainterApp {
       onRemove: (id) => this.removeLayer(id),
       onSelect: (id) => { this.stack.setActive(id); this.scheduleRender(); },
       onToggleVisible: (id, v) => this.executeLayerProps(id, { visible: v }),
-      onOpacity: (id, o) => this.executeLayerProps(id, { opacity: o }),
+      onOpacity: (id, o) => this.opacityDrag.commit(this.stack, this.history, id, o),
+      onOpacityPreview: (id, o) => this.opacityDrag.preview(this.stack, id, o),
       onMoveUp: (id) => this.moveLayer(id, +1),
       onMoveDown: (id) => this.moveLayer(id, -1),
       onRename: (id, name) => this.executeLayerProps(id, { name }),
