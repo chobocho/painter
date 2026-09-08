@@ -132,6 +132,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 205 passed, 0 failed
 - **비고:** 연속 패치로 헬퍼 주석 3개가 함수에서 분리돼 있던 것을 제자리로 복구.
 
+### [2026-09-08 05:55] 리뷰 #13 프로젝트 로드 후 컨트롤 동기화
+- **기획:** `controlValuesFromSettings()`로 설정→컨트롤 값 변환을 분리하고, `applyState` 끝에서 슬라이더·체크박스·패턴·팔레트를 갱신.
+- **TC:** (정상) 굵기/허용/패턴 값 반영. (엣지) 대칭 enabled=false 인데 axes 가 남은 경우 둘 다 해제, 축 1개/2개.
+- **개발:** `src/app/PainterApp.ts`, `src/test/round10.test.ts`
+- **검증:** 208 passed, 0 failed
+- **비고:** 없음.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

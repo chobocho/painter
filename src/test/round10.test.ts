@@ -856,3 +856,48 @@ describe("리뷰 #12 — 단축키", () => {
     assertEqual(matchShortcut(keyEvent({ key: "ㅂ" })), null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #13 — 프로젝트 로드 후 UI 컨트롤 미동기화
+//
+// applyState 는 설정을 Object.assign 으로 덮어쓰지만 굵기/허용 슬라이더,
+// 대칭 체크박스, 팔레트, 패턴 선택은 그대로 남아 실제 설정과 어긋났다.
+// ---------------------------------------------------------------------------
+
+describe("리뷰 #13 — 설정 → 컨트롤 값 변환", () => {
+  const toControls = (AppModule as unknown as {
+    controlValuesFromSettings?: (s: any) => any;
+  }).controlValuesFromSettings;
+
+  it("슬라이더와 패턴 값을 설정에서 가져온다", () => {
+    assertTrue(typeof toControls === "function", "controlValuesFromSettings 가 있어야 함");
+    const s = defaultSettings();
+    s.brushSize = 17;
+    s.tolerance = 42;
+    s.patternId = "dots";
+    const v = toControls!(s);
+    assertEqual(v.brushSize, "17");
+    assertEqual(v.tolerance, "42");
+    assertEqual(v.patternId, "dots");
+  });
+
+  it("대칭 축을 체크박스 두 개로 푼다", () => {
+    assertTrue(typeof toControls === "function", "controlValuesFromSettings 가 있어야 함");
+    const s = defaultSettings();
+    s.symmetry = { enabled: true, axes: ["x"], radial: 0 };
+    assertTrue(toControls!(s).mirrorX);
+    assertFalse(toControls!(s).mirrorY);
+
+    s.symmetry = { enabled: true, axes: ["x", "y"], radial: 0 };
+    assertTrue(toControls!(s).mirrorX);
+    assertTrue(toControls!(s).mirrorY);
+  });
+
+  it("대칭이 꺼져 있으면 축이 남아 있어도 둘 다 해제한다", () => {
+    assertTrue(typeof toControls === "function", "controlValuesFromSettings 가 있어야 함");
+    const s = defaultSettings();
+    s.symmetry = { enabled: false, axes: ["x", "y"], radial: 0 };
+    assertFalse(toControls!(s).mirrorX);
+    assertFalse(toControls!(s).mirrorY);
+  });
+});

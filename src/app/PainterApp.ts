@@ -33,6 +33,28 @@ const realCanvasFactory: CanvasFactory = (w, h) => {
 };
 
 /**
+ * 설정을 툴바 컨트롤 값으로 푼다. 프로젝트를 불러오면 settings 만 바뀌고
+ * 슬라이더·체크박스·패턴 선택은 예전 값 그대로 남아 실제 동작과 화면이
+ * 어긋났다. 대칭은 enabled 가 꺼져 있으면 axes 가 남아 있어도 둘 다 해제다.
+ */
+export function controlValuesFromSettings(s: ToolSettings): {
+  brushSize: string;
+  tolerance: string;
+  mirrorX: boolean;
+  mirrorY: boolean;
+  patternId: string | null;
+} {
+  const sym = s.symmetry;
+  return {
+    brushSize: String(s.brushSize),
+    tolerance: String(s.tolerance),
+    mirrorX: sym.enabled && sym.axes.includes("x"),
+    mirrorY: sym.enabled && sym.axes.includes("y"),
+    patternId: s.patternId,
+  };
+}
+
+/**
  * 레이어를 더 추가할 수 있는지. PNG 가져오기도 반드시 이걸 거쳐야 한다.
  * 예전에는 addLayer 에만 검사가 있어 PNG 로 제한을 우회할 수 있었다.
  */
@@ -127,6 +149,8 @@ export class PainterApp {
   private opacityDrag = new OpacityDrag();
   /** mount 에서 만든 캔버스 리핏 함수. 프로젝트 크기가 바뀌면 다시 불러야 한다. */
   private refitCanvas: (() => void) | null = null;
+  /** 툴바 컨트롤을 현재 settings 로 되돌리는 함수. 프로젝트를 불러오면 부른다. */
+  private syncControls: (() => void) | null = null;
   private projectId: string = Uid.next();
   private projectName: string = "Untitled";
   private createdAt: number = Date.now();
@@ -338,6 +362,17 @@ export class PainterApp {
     };
     mx.addEventListener("change", updateMirror);
     my.addEventListener("change", updateMirror);
+
+    this.syncControls = () => {
+      const v = controlValuesFromSettings(this.settings);
+      brushSize.value = v.brushSize;
+      tol.value = v.tolerance;
+      mx.checked = v.mirrorX;
+      my.checked = v.mirrorY;
+      if (v.patternId) patternSelect.value = v.patternId;
+      this.palette.set(this.settings.color);
+      this.updateBrushControls();
+    };
 
     this.autoSaver = new AutoSaver(this.store, this.stack, this.history, {
       intervalMs: 5000,
@@ -614,6 +649,8 @@ export class PainterApp {
     if (this.displayCanvas) this.displayCanvas.setProjectSize(this.projectWidth, this.projectHeight);
     // 크기만 바꾸고 리핏을 안 하면 화면이 늘어져 보이고 포인터 좌표가 어긋난다.
     this.refitCanvas?.();
+    // 불러온 설정을 툴바 컨트롤에도 반영한다.
+    this.syncControls?.();
     // Panels may have been created before this restore; force-refresh them so
     // the layer list and history list are immediately in sync with the loaded
     // state (the event-listener path is correct but fires asynchronously on
