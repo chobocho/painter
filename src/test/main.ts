@@ -20,6 +20,7 @@ import "./round6.test.js";
 import "./round7.test.js";
 import "./round8.test.js";
 import "./round9.test.js";
+import "./round10.test.js";
 
 import { run } from "./runner.js";
 run();

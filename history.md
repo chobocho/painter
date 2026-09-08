@@ -46,6 +46,15 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 다음 세션은 `node dist/src/test/main.js | tail -5`로 `# pass 168` 확인 후 시작.
 
 
+## 2026-09-08 — 코드 리뷰(doc/code-review-2026-09-08.md) 후속 수정
+
+### [2026-09-08 04:03] 리뷰 #1/#6 채우기 무한 루프·히스토리 과다 저장 수정
+- **기획:** 매치 판정을 갱신 중인 버퍼가 아닌 원본 스냅샷 기준으로 바꾸고 방문 마스크를 도입. 변경 픽셀 bbox만 히스토리에 저장.
+- **TC:** (정상) bbox 크기 검증, undo 복원. (엣지) 칠할 색이 시드 색 허용오차 안 → ImageData 읽기 예산 프록시로 무한 루프 검출.
+- **개발:** `src/tools/FillBucketTool.ts`, `src/test/round10.test.ts`, `src/test/main.ts`
+- **검증:** 171 passed, 0 failed
+- **비고:** 레이어 전체 getImageData 2회 → 1회로 축소. 리뷰 #14(허용오차 기준 불일치)는 별건으로 남음.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries
