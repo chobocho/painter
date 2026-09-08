@@ -94,14 +94,14 @@ describe("LayerStack", () => {
     assertEqual(a.opacity, 0);
   });
 
-  it("dirty rect accumulates union", () => {
+  it("markDirty emits the clamped rect", () => {
     const stack = new LayerStack(100, 100, mockFactory);
-    stack.consumeDirty();
+    const seen: Rect[] = [];
+    stack.on("dirty", (e) => seen.push(e.rect));
     stack.markDirty(Rect.create(10, 10, 5, 5));
-    stack.markDirty(Rect.create(20, 20, 5, 5));
-    const r = stack.consumeDirty();
-    assertDeepEqual(r, { x: 10, y: 10, w: 15, h: 15 });
-    assertTrue(Rect.isEmpty(stack.consumeDirty()));
+    stack.markDirty(Rect.create(90, 90, 50, 50));
+    assertDeepEqual(seen[0], { x: 10, y: 10, w: 5, h: 5 });
+    assertDeepEqual(seen[1], { x: 90, y: 90, w: 10, h: 10 });
   });
 
   it("compositeTo respects visibility", () => {

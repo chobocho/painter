@@ -1,7 +1,6 @@
 import { Layer } from "../core/Layer.js";
 import { LayerStack } from "../core/LayerStack.js";
 import { CommandHistory } from "../history/CommandHistory.js";
-import { Emitter } from "../util/Events.js";
 import { RGBA } from "../util/Color.js";
 
 export interface ToolPointer {
@@ -76,12 +75,4 @@ export interface Tool {
   onPointerMove(p: ToolPointer, ctx: ToolContext): void;
   onPointerUp(p: ToolPointer, ctx: ToolContext): void;
   onPointerCancel(ctx: ToolContext): void;
-}
-
-export class ToolSettingsEmitter extends Emitter<{ change: ToolSettings }> {
-  constructor(public state: ToolSettings) { super(); }
-  patch(p: Partial<ToolSettings>): void {
-    this.state = { ...this.state, ...p };
-    this.emit("change", this.state);
-  }
 }

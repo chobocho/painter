@@ -12,7 +12,7 @@ import { InputAdapter } from "../input/InputAdapter.js";
 import { matchShortcut } from "../input/Shortcuts.js";
 import { IndexedDBStore } from "../storage/IndexedDBStore.js";
 import { AutoSaver } from "../storage/AutoSaver.js";
-import { ProjectCodec, ProjectState, PROJECT_VERSION } from "../io/ProjectCodec.js";
+import { ProjectCodec, ProjectState } from "../io/ProjectCodec.js";
 import { importPngFile } from "../io/PngImporter.js";
 import { removeBackground } from "../io/BackgroundRemover.js";
 import { Toolbar } from "../ui/Toolbar.js";
@@ -856,5 +856,3 @@ export class PainterApp {
   }
 }
 
-// Suppress unused-import warning for PROJECT_VERSION (kept for re-export).
-export const _ver = PROJECT_VERSION;

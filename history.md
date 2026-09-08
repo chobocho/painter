@@ -167,6 +167,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 229 passed, 0 failed
 - **비고:** 1920×1280 노이즈 인코딩 실측 66ms / 힙 4MB (리뷰 측정 550ms / 500MB). 캐시는 `getCtx()` 호출 시 보수적으로 무효화.
 
+### [2026-09-08 07:00] 리뷰 #17/#20 죽은 코드 정리
+- **기획:** 사용자 확인 후 `consumeDirty`/dirty 누적 필드, `ColorCyclingEngine`, `ToolSettingsEmitter`, `_ver` 꼼수 제거. 전체 합성 유지 이유를 주석화.
+- **TC:** `consumeDirty` 테스트를 `markDirty` 이벤트 클램핑 테스트로 대체(경계값 90,90,50,50 → 10×10).
+- **개발:** `src/core/LayerStack.ts`, `src/tools/Tool.ts`, `src/tools/ColorCycling.ts`(삭제), `src/app/PainterApp.ts`, `src/test/core.test.ts`, `src/test/tools.test.ts`, `README.md`
+- **검증:** 228 passed, 0 failed
+- **비고:** README 기능표에서 '컬러 사이클링' 문구 제거. 테스트 1개 감소는 삭제된 기능의 테스트 제거분.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

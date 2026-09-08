@@ -13,7 +13,6 @@ export class LayerStack extends Emitter<StackEvents> {
   readonly factory: CanvasFactory;
   width: number;
   height: number;
-  private dirty: Rect = Rect.empty();
 
   constructor(width: number, height: number, factory: CanvasFactory) {
     super();
@@ -32,7 +31,6 @@ export class LayerStack extends Emitter<StackEvents> {
     this.width = width;
     this.height = height;
     this.activeId = activeId ?? (this.layers[0]?.id ?? null);
-    this.dirty = Rect.create(0, 0, width, height);
     this.emit("change", { reason: "reset" });
   }
 
@@ -112,15 +110,14 @@ export class LayerStack extends Emitter<StackEvents> {
     this.emit("change", { reason: "rename" });
   }
 
+  /**
+   * 다시 그려야 할 영역을 알린다.
+   * 합성은 항상 전체 프레임으로 한다 — 표시 캔버스는 프로젝트 크기에 배율을
+   * 걸어 그리므로, 부분 갱신을 하면 배율 경계에서 지워지지 않은 픽셀이 남는다.
+   * 그래서 dirty 영역을 누적해 두는 대신 이벤트로만 흘려보낸다.
+   */
   markDirty(rect: Rect): void {
-    this.dirty = Rect.union(this.dirty, Rect.intersect(rect, Rect.create(0, 0, this.width, this.height)));
-    this.emit("dirty", { rect: this.dirty });
-  }
-
-  consumeDirty(): Rect {
-    const r = this.dirty;
-    this.dirty = Rect.empty();
-    return r;
+    this.emit("dirty", { rect: Rect.intersect(rect, Rect.create(0, 0, this.width, this.height)) });
   }
 
   /**

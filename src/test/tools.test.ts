@@ -10,7 +10,6 @@ import { GradientTool } from "../tools/GradientTool.js";
 import { EyedropperTool } from "../tools/EyedropperTool.js";
 import { SmudgeTool } from "../tools/SmudgeTool.js";
 import { PatternBrush } from "../tools/PatternBrush.js";
-import { ColorCyclingEngine } from "../tools/ColorCycling.js";
 import { buildDefaultRegistry } from "../tools/ToolRegistry.js";
 import { MockHTMLCanvasElement } from "./mocks/Canvas.js";
 
@@ -349,31 +348,6 @@ describe("PatternBrush", () => {
     tool.onPointerMove(pointer(20, 20), ctx);
     tool.onPointerUp(pointer(20, 20), ctx);
     assertEqual(history.size().past, 1);
-  });
-});
-
-describe("ColorCyclingEngine", () => {
-  it("cycles palette colors on tick", () => {
-    const { stack, layer } = bootstrap();
-    layer.getCtx().fillStyle = "rgba(10,10,10,1)";
-    layer.getCtx().fillRect(0, 0, 1, 1);
-    const engine = new ColorCyclingEngine(stack);
-    engine.setGroups([{
-      id: "g1",
-      enabled: true,
-      intervalMs: 100,
-      colors: [
-        { r: 10, g: 10, b: 10, a: 255 },
-        { r: 20, g: 20, b: 20, a: 255 },
-        { r: 30, g: 30, b: 30, a: 255 },
-      ],
-    }]);
-    engine.tick();
-    assertEqual(layer.getPixels(0, 0, 1, 1).data[0], 20);
-    engine.tick();
-    assertEqual(layer.getPixels(0, 0, 1, 1).data[0], 30);
-    engine.tick();
-    assertEqual(layer.getPixels(0, 0, 1, 1).data[0], 10);
   });
 });
 
