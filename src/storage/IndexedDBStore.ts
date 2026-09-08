@@ -26,6 +26,16 @@ const DB_VERSION = 1;
 const STORE_PROJECTS = "projects";
 const STORE_AUTOSAVES = "autosaves";
 const STORE_META = "meta";
+/**
+ * 프로젝트 목록용 메타 인덱스 키. 목록 조회가 projects 전체(각 수백 KB 의
+ * projectJson 포함)를 읽지 않도록, 가벼운 메타만 이 한 레코드에 모아 둔다.
+ */
+const PROJECT_INDEX_KEY = "projectIndex";
+
+function toMeta(p: StoredProject): ProjectMeta {
+  const { id, name, createdAt, updatedAt, width, height, thumb } = p;
+  return { id, name, createdAt, updatedAt, width, height, thumb };
+}
 
 interface IDBLike {
   open(name: string, version: number): unknown;
@@ -71,20 +81,36 @@ export class IndexedDBStore {
     });
   }
 
-  putProject(p: StoredProject): Promise<string> {
-    return this.withStore(STORE_PROJECTS, "readwrite", (s) => s.put(p));
+  async putProject(p: StoredProject): Promise<string> {
+    const key = await this.withStore<string>(STORE_PROJECTS, "readwrite", (s) => s.put(p));
+    await this.updateIndex((list) => [...list.filter((m) => m.id !== p.id), toMeta(p)]);
+    return key;
   }
   getProject(id: string): Promise<StoredProject | undefined> {
     return this.withStore(STORE_PROJECTS, "readonly", (s) => s.get(id));
   }
-  deleteProject(id: string): Promise<void> {
-    return this.withStore(STORE_PROJECTS, "readwrite", (s) => s.delete(id));
+  async deleteProject(id: string): Promise<void> {
+    await this.withStore(STORE_PROJECTS, "readwrite", (s) => s.delete(id));
+    // autosave 도 같이 지운다. 예전에는 지울 방법 자체가 없어 영구 누적됐다.
+    await this.deleteAutoSave(id);
+    await this.updateIndex((list) => list.filter((m) => m.id !== id));
   }
+
   async listProjects(): Promise<ProjectMeta[]> {
+    const idx = await this.getMeta(PROJECT_INDEX_KEY) as ProjectMeta[] | undefined;
+    if (Array.isArray(idx)) return [...idx].sort((a, b) => b.updatedAt - a.updatedAt);
+    // 인덱스가 없는 옛 저장본은 이때 한 번만 전체를 읽어 인덱스를 만들어 둔다.
     const all = await this.withStore<StoredProject[]>(STORE_PROJECTS, "readonly", (s) => s.getAll());
-    return (all ?? [])
-      .map(({ id, name, createdAt, updatedAt, width, height, thumb }) => ({ id, name, createdAt, updatedAt, width, height, thumb }))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+    const metas = (all ?? []).map(toMeta);
+    await this.putMeta(PROJECT_INDEX_KEY, metas);
+    return metas.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  /** 목록 인덱스를 읽고-바꾸고-쓴다. 인덱스가 없으면 listProjects 가 복구한다. */
+  private async updateIndex(fn: (list: ProjectMeta[]) => ProjectMeta[]): Promise<void> {
+    const current = await this.getMeta(PROJECT_INDEX_KEY) as ProjectMeta[] | undefined;
+    const base = Array.isArray(current) ? current : await this.listProjects();
+    await this.putMeta(PROJECT_INDEX_KEY, fn(base));
   }
 
   putAutoSave(a: StoredAutoSave): Promise<string> {
@@ -92,6 +118,9 @@ export class IndexedDBStore {
   }
   getAutoSave(id: string): Promise<StoredAutoSave | undefined> {
     return this.withStore(STORE_AUTOSAVES, "readonly", (s) => s.get(id));
+  }
+  deleteAutoSave(id: string): Promise<void> {
+    return this.withStore(STORE_AUTOSAVES, "readwrite", (s) => s.delete(id));
   }
 
   putMeta(key: string, value: unknown): Promise<unknown> {

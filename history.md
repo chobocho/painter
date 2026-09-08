@@ -146,6 +146,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 217 passed, 0 failed
 - **비고:** 배경 제거 프롬프트를 한글화하고 취소/오타를 각각 처리. `#rgb` 3자리 hex 지원 추가.
 
+### [2026-09-08 06:20] 리뷰 #15(1/2) 프로젝트 목록 경량화·autosave 정리 API
+- **기획:** 가벼운 메타만 담는 `projectIndex` 레코드를 두고 목록 조회에서 `getAll` 제거. `deleteAutoSave()` 추가, 프로젝트 삭제 시 autosave·인덱스까지 정리.
+- **TC:** (정상) 최신순 목록·JSON 미포함. (엣지) 인덱스 유실 시 getAll 폴백 복구, 삭제 후 autosave/목록 동시 정리.
+- **개발:** `src/storage/IndexedDBStore.ts`, `src/test/round10.test.ts`
+- **검증:** 221 passed, 0 failed
+- **비고:** DB 버전 상향 없이 기존 meta 스토어를 재사용(모의 IDB 가 업그레이드를 모사하지 않음).
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

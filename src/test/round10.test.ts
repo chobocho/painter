@@ -995,3 +995,71 @@ describe("리뷰 #24 — 손상된 데이터 검증", () => {
     assertThrows(() => ProjectCodec.decode('{"version":"1.0.0","meta":{"width":10,"height":10},"layers":"nope"}'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #15(저장소) — 목록 조회가 모든 프로젝트의 전체 JSON 을 읽고, autosave
+// 항목을 지우는 API 가 없어 영구 누적된다.
+// ---------------------------------------------------------------------------
+
+const bigJson = (id: string) => JSON.stringify({ version: "1.0.0", id, blob: "x".repeat(20000) });
+
+function storedProject(id: string, name: string, updatedAt: number) {
+  return { id, name, createdAt: 1, updatedAt, width: 100, height: 100, projectJson: bigJson(id) };
+}
+
+describe("리뷰 #15 — 프로젝트 목록 경량화", () => {
+  it("목록 조회가 프로젝트 JSON 을 읽지 않는다", async () => {
+    const store = await freshStore();
+    await store.putProject(storedProject("p1", "첫번째", 10));
+    await store.putProject(storedProject("p2", "두번째", 20));
+
+    // getAll 이 호출되면 전체 JSON 을 읽는다는 뜻이다.
+    let getAllCalls = 0;
+    const orig = (store as any).withStore.bind(store);
+    (store as any).withStore = (name: string, mode: string, fn: any) => {
+      const spy = (s: any) => {
+        const wrapped = Object.create(s);
+        wrapped.getAll = (...a: any[]) => { getAllCalls++; return s.getAll(...a); };
+        return fn(wrapped);
+      };
+      return orig(name, mode, spy);
+    };
+
+    const list = await store.listProjects();
+    assertEqual(list.length, 2);
+    assertEqual(list[0]!.id, "p2", "최신순 정렬");
+    assertEqual((list[0] as any).projectJson, undefined, "메타에 JSON 이 실리면 안 됨");
+    assertEqual(getAllCalls, 0, `목록 조회에 getAll 을 쓰면 안 됨 (호출 ${getAllCalls}회)`);
+  });
+
+  it("인덱스가 없던 옛 저장본도 목록이 나온다", async () => {
+    const store = await freshStore();
+    await store.putProject(storedProject("p1", "옛것", 5));
+    await store.putMeta("projectIndex", undefined); // 인덱스 유실 상황
+    const list = await store.listProjects();
+    assertEqual(list.length, 1, "getAll 폴백으로 복구");
+    assertEqual(list[0]!.name, "옛것");
+  });
+});
+
+describe("리뷰 #15 — autosave 정리", () => {
+  it("autosave 를 지우는 API 가 있다", async () => {
+    const store = await freshStore();
+    await store.putAutoSave({ id: "p1", savedAt: 1, projectJson: "{}" });
+    const del = (store as unknown as { deleteAutoSave?: (id: string) => Promise<void> }).deleteAutoSave;
+    assertTrue(typeof del === "function", "deleteAutoSave 가 있어야 함");
+    await del!.call(store, "p1");
+    assertEqual(await store.getAutoSave("p1"), undefined);
+  });
+
+  it("프로젝트를 지우면 autosave 와 목록에서도 사라진다", async () => {
+    const store = await freshStore();
+    await store.putProject(storedProject("p1", "지울것", 1));
+    await store.putAutoSave({ id: "p1", savedAt: 1, projectJson: "{}" });
+
+    await store.deleteProject("p1");
+    assertEqual(await store.getProject("p1"), undefined);
+    assertEqual(await store.getAutoSave("p1"), undefined, "autosave 도 함께 정리");
+    assertEqual((await store.listProjects()).length, 0, "목록에서도 사라짐");
+  });
+});
