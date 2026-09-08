@@ -227,8 +227,17 @@ export function encodeBase64(data: Uint8ClampedArray): string {
   if (g.Buffer) {
     return g.Buffer.from(new Uint8Array(data.buffer, data.byteOffset, data.byteLength)).toString("base64");
   }
-  let bin = "";
-  for (let i = 0; i < data.length; i++) bin += String.fromCharCode(data[i]!);
+  // 브라우저 폴백. 바이트마다 문자열을 이어붙이면 9.8MB 레이어 한 장에
+  // 1.6초가 걸린다. 청크 단위로 fromCharCode.apply 를 쓰면 같은 결과를
+  // 훨씬 적은 문자열 할당으로 만든다. 청크는 인자 개수 한계를 넘지 않도록
+  // 8K 로 잡았다. O(n) 시간, O(n) 추가 메모리.
+  const CHUNK = 8192;
+  const parts: string[] = [];
+  for (let i = 0; i < data.length; i += CHUNK) {
+    const end = Math.min(i + CHUNK, data.length);
+    parts.push(String.fromCharCode.apply(null, Array.prototype.slice.call(data, i, end) as number[]));
+  }
+  const bin = parts.join("");
   const g2 = globalThis as unknown as { btoa?: (s: string) => string };
   return g2.btoa ? g2.btoa(bin) : bin;
 }

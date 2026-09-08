@@ -235,3 +235,64 @@ describe("리뷰 #2 — 도형 undo 잔존 픽셀", () => {
     assertEqual(r.left, 0, `undo 후 잔존 픽셀 0 이어야 함 (그림 ${r.drawn}, 남음 ${r.left})`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #4 — 레이어 추가/삭제/PNG 가져오기가 비압축 base64 를 히스토리에 넣음
+//
+// layer.serialize() 를 옵션 없이 부르면 rawRGBA(비압축 base64)가 만들어진다.
+// 1920×1280 레이어 한 장이 약 13MB 문자열이고, 브라우저 폴백 경로는 문자
+// 단위 문자열 결합이라 한 장에 약 1.6초가 걸렸다(undo 시 디코드도 동일).
+// ---------------------------------------------------------------------------
+
+import { encodeBase64, decodeBase64 } from "../core/Layer.js";
+
+describe("리뷰 #4 — 히스토리 스냅샷 압축", () => {
+  it("히스토리용 스냅샷은 비압축 base64 를 담지 않는다", () => {
+    const snap = (AppModule as unknown as { historySnapshot?: (l: Layer) => any }).historySnapshot;
+    assertTrue(typeof snap === "function", "historySnapshot 헬퍼가 있어야 함");
+    const layer = new Layer({ name: "L", width: 32, height: 32, factory });
+    const lctx = layer.getCtx();
+    lctx.fillStyle = "rgba(1,2,3,1)";
+    lctx.fillRect(0, 0, 32, 32);
+
+    const s = snap!(layer);
+    assertEqual(s.rawRGBA, undefined, "rawRGBA(비압축)가 없어야 함");
+    assertTrue(typeof s.rleRGBA === "string", "RLE 압축본이 있어야 함");
+  });
+
+  it("압축 스냅샷이 원래 픽셀로 복원된다", () => {
+    const snap = (AppModule as unknown as { historySnapshot?: (l: Layer) => any }).historySnapshot;
+    assertTrue(typeof snap === "function", "historySnapshot 헬퍼가 있어야 함");
+    const layer = new Layer({ name: "L", width: 16, height: 16, factory });
+    const lctx = layer.getCtx();
+    lctx.fillStyle = "rgba(9,8,7,1)";
+    lctx.fillRect(2, 2, 5, 5);
+
+    const restored = Layer.deserialize(snap!(layer), factory);
+    const a = layer.getPixels(0, 0, 16, 16).data;
+    const b = restored.getPixels(0, 0, 16, 16).data;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+    assertEqual(diff, 0, "복원 픽셀이 원본과 같아야 함");
+  });
+
+  it("Buffer 없는(브라우저) 경로의 base64 가 Node 경로와 같다", () => {
+    const data = new Uint8ClampedArray(70000);
+    for (let i = 0; i < data.length; i++) data[i] = (i * 31 + 7) & 0xff;
+    const g = globalThis as any;
+    const withBuffer = encodeBase64(data);
+    const saved = g.Buffer;
+    try {
+      delete g.Buffer;
+      const withoutBuffer = encodeBase64(data);
+      assertEqual(withoutBuffer, withBuffer, "폴백 인코딩 결과가 같아야 함");
+      const round = decodeBase64(withoutBuffer);
+      assertEqual(round.length, data.length);
+      let diff = 0;
+      for (let i = 0; i < data.length; i++) if (round[i] !== data[i]) diff++;
+      assertEqual(diff, 0, "폴백 라운드트립이 정확해야 함");
+    } finally {
+      g.Buffer = saved;
+    }
+  });
+});

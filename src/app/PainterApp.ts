@@ -2,7 +2,7 @@
 // storage, autosave, input, and UI panels into a working painter app.
 
 import { LayerStack } from "../core/LayerStack.js";
-import { Layer, CanvasFactory } from "../core/Layer.js";
+import { Layer, CanvasFactory, LayerSnapshot } from "../core/Layer.js";
 import { DisplayCanvas } from "../core/Canvas.js";
 import { CommandHistory } from "../history/CommandHistory.js";
 import { AddLayerCommand, RemoveLayerCommand, ReorderLayerCommand, SetLayerPropsCommand, PixelEditCommand } from "../history/Commands.js";
@@ -37,6 +37,16 @@ const realCanvasFactory: CanvasFactory = (w, h) => {
  * 쓴다. 예전에는 자동 저장본만 봐서, Ctrl+S 로 저장한 최신 상태가 있어도
  * 그보다 오래된 자동 저장본이 올라오는 경우가 있었다.
  */
+/**
+ * 히스토리 커맨드에 넣을 레이어 스냅샷. 반드시 compact 로 만든다.
+ * 옵션 없는 serialize() 는 비압축 base64(rawRGBA)를 만드는데, 1920×1280
+ * 레이어 한 장이 약 13MB 문자열이고 브라우저 폴백 경로에서 인코딩·디코딩에
+ * 각각 1.6초쯤 걸려 레이어 추가/삭제/PNG 가져오기가 그대로 멈춰 보였다.
+ */
+export function historySnapshot(layer: Layer): LayerSnapshot {
+  return layer.serialize({ compact: true });
+}
+
 export function pickRestoreJson(
   auto?: { savedAt: number; projectJson: string },
   project?: { updatedAt: number; projectJson: string }
@@ -396,7 +406,7 @@ export class PainterApp {
     }
     try {
       const layer = new Layer({ name: `레이어 ${this.stack.size() + 1}`, width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
-      this.history.execute(new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }), { stack: this.stack });
+      this.history.execute(new AddLayerCommand({ snapshot: historySnapshot(layer), index: this.stack.size() }), { stack: this.stack });
       this.scheduleRender();
       this.flashStatus(`✓ 레이어 추가 (${this.stack.size()}/${LAYER_LIMIT})`, 1200);
     } catch (e) {
@@ -410,7 +420,7 @@ export class PainterApp {
     const layer = this.stack.get(id);
     if (!layer) return;
     const index = this.stack.getAll().findIndex((l) => l.id === id);
-    this.history.execute(new RemoveLayerCommand({ snapshot: layer.serialize(), index }), { stack: this.stack });
+    this.history.execute(new RemoveLayerCommand({ snapshot: historySnapshot(layer), index }), { stack: this.stack });
   }
 
   private moveLayer(id: string, delta: number): void {
@@ -614,7 +624,7 @@ export class PainterApp {
     try {
       const layer = await importPngFile(file, this.projectWidth, this.projectHeight, realCanvasFactory, file.name);
       this.history.execute(
-        new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }),
+        new AddLayerCommand({ snapshot: historySnapshot(layer), index: this.stack.size() }),
         { stack: this.stack }
       );
       // Ensure the canvas repaints even if the stack-change listener fires

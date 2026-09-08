@@ -69,6 +69,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 178 passed, 0 failed
 - **비고:** 수정 전 잔존 삼각형 39px / 정사각형·정원도 다수.
 
+### [2026-09-08 04:31] 리뷰 #4 히스토리 비압축 base64 제거
+- **기획:** 레이어 추가/삭제/PNG 가져오기의 스냅샷을 `historySnapshot()`(compact)로 일원화. 브라우저 base64 폴백을 청크 인코딩으로 교체.
+- **TC:** (정상) 스냅샷에 rawRGBA 없음·RLE 존재, 압축본 픽셀 복원. (엣지) Buffer 없는 폴백 경로 결과가 Node 경로와 바이트 동일 + 라운드트립.
+- **개발:** `src/app/PainterApp.ts`, `src/core/Layer.ts`, `src/test/round10.test.ts`
+- **검증:** 181 passed, 0 failed
+- **비고:** 폴백 인코딩 실측 1920×1280 기준 3.62s → 1.65s. 빈 레이어는 픽셀 데이터 자체를 담지 않음.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries
