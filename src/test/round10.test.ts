@@ -179,3 +179,59 @@ describe("리뷰 #3 — 복원 소스 선택", () => {
     assertEqual(pick!(undefined, undefined), undefined);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 리뷰 #2 — 삼각형/정사각형/정원 undo 시 픽셀 잔존
+//
+// 커밋 rect 를 포인터가 지나간 bbox 로만 계산했는데, 삼각형은 제3 꼭짓점이
+// x2 = 2*x0 - x1 이고 정사각형/정원은 max(|dx|,|dy|) 로 보정하므로 포인터
+// 범위 바깥까지 그린다. 그 바깥 픽셀은 undo 로 지워지지 않고 남았다.
+// ---------------------------------------------------------------------------
+
+import { RectTool, EllipseTool, TriangleTool } from "../tools/ShapeTools.js";
+
+/** 레이어에서 알파가 0 이 아닌 픽셀 수. */
+function opaqueCount(layer: Layer): number {
+  const d = layer.getPixels(0, 0, layer.width, layer.height).data;
+  let n = 0;
+  for (let i = 3; i < d.length; i += 4) if (d[i]! > 0) n++;
+  return n;
+}
+
+function drawAndUndo(tool: any, size: number, from: [number, number], to: [number, number]): { drawn: number; left: number } {
+  const { ctx, history, stack, layer } = bootstrap(size);
+  ctx.settings.color = { r: 255, g: 0, b: 0, a: 255 };
+  tool.onPointerDown(pointer(from[0], from[1]), ctx);
+  tool.onPointerMove(pointer(to[0], to[1]), ctx);
+  tool.onPointerUp(pointer(to[0], to[1]), ctx);
+  const drawn = opaqueCount(layer);
+  history.undo({ stack });
+  return { drawn, left: opaqueCount(layer) };
+}
+
+describe("리뷰 #2 — 도형 undo 잔존 픽셀", () => {
+  it("삼각형은 제3 꼭짓점까지 undo 된다", () => {
+    // 오른쪽으로 끌면 제3 꼭짓점은 시작점 왼쪽(x2 = 2*x0 - x1)에 생긴다.
+    const r = drawAndUndo(new TriangleTool(), 64, [40, 10], [55, 40]);
+    assertTrue(r.drawn > 0, "삼각형이 그려져야 함");
+    assertEqual(r.left, 0, `undo 후 잔존 픽셀 0 이어야 함 (그림 ${r.drawn}, 남음 ${r.left})`);
+  });
+
+  it("정사각형은 보정된 변까지 undo 된다", () => {
+    const tool = new RectTool();
+    tool.square = true;
+    tool.filled = true;
+    const r = drawAndUndo(tool, 64, [10, 10], [55, 25]); // |dx|=45 > |dy|=15 → 아래로 45 확장
+    assertTrue(r.drawn > 0, "정사각형이 그려져야 함");
+    assertEqual(r.left, 0, `undo 후 잔존 픽셀 0 이어야 함 (그림 ${r.drawn}, 남음 ${r.left})`);
+  });
+
+  it("정원은 보정된 반지름까지 undo 된다", () => {
+    const tool = new EllipseTool();
+    tool.circle = true;
+    tool.filled = true;
+    const r = drawAndUndo(tool, 64, [10, 25], [55, 35]); // rx=22.5 > ry=5 → 세로로 확장
+    assertTrue(r.drawn > 0, "정원이 그려져야 함");
+    assertEqual(r.left, 0, `undo 후 잔존 픽셀 0 이어야 함 (그림 ${r.drawn}, 남음 ${r.left})`);
+  });
+});

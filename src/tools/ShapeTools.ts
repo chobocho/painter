@@ -161,6 +161,9 @@ abstract class TwoPointShapeTool implements Tool {
     if (!this.drag) return;
     const drag = this.drag;
     drag.last = { x: p.x, y: p.y };
+    // 매 이동마다 shadow 로 되돌리므로 직전 미리보기의 bbox 는 의미가 없다.
+    // 시작점부터 다시 쌓아 커밋 rect 를 최소로 유지한다.
+    drag.bbox = newBbox(drag.start.x, drag.start.y);
     expandBbox(drag.bbox, p.x, p.y);
     restoreFromShadow(drag.layer, drag.shadow);
     const lctx = drag.layer.getCtx();
@@ -170,7 +173,14 @@ abstract class TwoPointShapeTool implements Tool {
     lctx.lineWidth = Math.max(1, ctx.settings.brushSize);
     lctx.fillStyle = Color.toCss(ctx.settings.color);
     lctx.strokeStyle = Color.toCss(ctx.settings.color);
-    this.drawShape(lctx, drag.start.x, drag.start.y, p.x, p.y, this.filled);
+    // 삼각형의 제3 꼭짓점, 정사각형/정원의 보정된 변처럼 포인터 범위 밖까지
+    // 그리는 도형이 있다. 실제 기하 범위를 받아 bbox 에 합쳐야 undo 가
+    // 그린 픽셀을 모두 덮는다.
+    const extent = this.drawShape(lctx, drag.start.x, drag.start.y, p.x, p.y, this.filled);
+    if (extent) {
+      expandBbox(drag.bbox, extent.minX, extent.minY);
+      expandBbox(drag.bbox, extent.maxX, extent.maxY);
+    }
     lctx.restore();
     ctx.stack.markDirty(Rect.create(0, 0, drag.layer.width, drag.layer.height));
   }
@@ -192,7 +202,8 @@ abstract class TwoPointShapeTool implements Tool {
     this.drag = null;
   }
 
-  protected abstract drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): void;
+  /** 그린 도형의 기하 범위. 포인터 bbox 로 충분한 도형은 아무것도 돌려주지 않아도 된다. */
+  protected abstract drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): Bbox | void;
 }
 
 export class LineTool extends TwoPointShapeTool {
@@ -208,7 +219,7 @@ export class LineTool extends TwoPointShapeTool {
 export class RectTool extends TwoPointShapeTool {
   id = "rect";
   square: boolean = false;
-  protected drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): void {
+  protected drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): Bbox {
     let dx = x1 - x0;
     let dy = y1 - y0;
     if (this.square) {
@@ -218,13 +229,17 @@ export class RectTool extends TwoPointShapeTool {
     }
     if (filled) lctx.fillRect(x0, y0, dx, dy);
     else lctx.strokeRect(x0, y0, dx, dy);
+    return {
+      minX: Math.min(x0, x0 + dx), minY: Math.min(y0, y0 + dy),
+      maxX: Math.max(x0, x0 + dx), maxY: Math.max(y0, y0 + dy),
+    };
   }
 }
 
 export class EllipseTool extends TwoPointShapeTool {
   id = "ellipse";
   circle: boolean = false;
-  protected drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): void {
+  protected drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): Bbox {
     const cx = (x0 + x1) / 2;
     const cy = (y0 + y1) / 2;
     let rx = Math.abs(x1 - x0) / 2;
@@ -236,12 +251,13 @@ export class EllipseTool extends TwoPointShapeTool {
     lctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     if (filled) lctx.fill();
     else lctx.stroke();
+    return { minX: cx - rx, minY: cy - ry, maxX: cx + rx, maxY: cy + ry };
   }
 }
 
 export class TriangleTool extends TwoPointShapeTool {
   id = "triangle";
-  protected drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): void {
+  protected drawShape(lctx: Ctx2D, x0: number, y0: number, x1: number, y1: number, filled: boolean): Bbox {
     const x2 = x0 * 2 - x1;
     lctx.beginPath();
     lctx.moveTo(x0, y0);
@@ -250,5 +266,9 @@ export class TriangleTool extends TwoPointShapeTool {
     lctx.closePath();
     if (filled) lctx.fill();
     else lctx.stroke();
+    return {
+      minX: Math.min(x0, x1, x2), minY: Math.min(y0, y1),
+      maxX: Math.max(x0, x1, x2), maxY: Math.max(y0, y1),
+    };
   }
 }

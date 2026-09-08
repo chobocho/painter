@@ -62,6 +62,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 175 passed, 0 failed
 - **비고:** 리뷰 #8(새 프로젝트 좌표 매핑)은 별건으로 남음.
 
+### [2026-09-08 04:20] 리뷰 #2 도형 undo 잔존 픽셀 수정
+- **기획:** `drawShape`가 실제 기하 범위(Bbox)를 반환하도록 하고 커밋 bbox에 합침. shadow 복원 구조상 이동마다 bbox를 시작점부터 재계산.
+- **TC:** (정상) 삼각형/정사각형/정원 그린 뒤 undo → 잔존 픽셀 0. (엣지) 포인터 범위 밖으로 확장되는 방향으로 드래그.
+- **개발:** `src/tools/ShapeTools.ts`, `src/test/round10.test.ts`
+- **검증:** 178 passed, 0 failed
+- **비고:** 수정 전 잔존 삼각형 39px / 정사각형·정원도 다수.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries
