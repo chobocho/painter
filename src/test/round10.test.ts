@@ -450,10 +450,21 @@ function withRichDom<T>(fn: (root: FakeEl) => T): T {
   const g = globalThis as any;
   const saved = g.document;
   g.document = { createElement: (tag: string) => { const e = makeEl(); e.tagName = tag.toUpperCase(); return e; } };
+  const restore = () => { g.document = saved; };
   try {
-    return fn(makeEl());
-  } finally {
-    g.document = saved;
+    const r = fn(makeEl());
+    // async 콜백이면 끝날 때까지 셰임을 유지해야 한다.
+    if (r && typeof (r as any).then === "function") {
+      return (r as any).then(
+        (v: unknown) => { restore(); return v; },
+        (e: unknown) => { restore(); throw e; }
+      ) as T;
+    }
+    restore();
+    return r;
+  } catch (e) {
+    restore();
+    throw e;
   }
 }
 
@@ -1061,5 +1072,55 @@ describe("리뷰 #15 — autosave 정리", () => {
     assertEqual(await store.getProject("p1"), undefined);
     assertEqual(await store.getAutoSave("p1"), undefined, "autosave 도 함께 정리");
     assertEqual((await store.listProjects()).length, 0, "목록에서도 사라짐");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 리뷰 #15(UI) — 프로젝트 삭제/이름 변경 UI 가 없고, render 가 async 라
+// 동시 호출 시 목록이 중복된다.
+// ---------------------------------------------------------------------------
+
+import { ProjectPanel } from "../ui/ProjectPanel.js";
+
+function projectPanelHandlers(sink: string[]): any {
+  return {
+    onNew() {}, onSave() {}, onLoad: (id: string) => sink.push(`load:${id}`),
+    onExportPng() {}, onExportJson() {}, onImportJson() {}, onImportPng() {},
+    onChromaKey() {},
+    onDelete: (id: string) => sink.push(`delete:${id}`),
+    onRename: (id: string, name: string) => sink.push(`rename:${id}:${name}`),
+  };
+}
+
+describe("리뷰 #15 — 프로젝트 목록 UI", () => {
+  it("행마다 이름 변경·삭제 버튼이 있다", async () => {
+    const store = await freshStore();
+    await store.putProject(storedProject("p1", "그림", 1));
+    const sink: string[] = [];
+    await withRichDom(async (root) => {
+      const panel = new ProjectPanel(root as any, store, projectPanelHandlers(sink));
+      await panel.render();
+      const del = findByClass(root, "project-delete");
+      const ren = findByClass(root, "project-rename");
+      assertTrue(del !== null, "삭제 버튼이 있어야 함");
+      assertTrue(ren !== null, "이름 변경 버튼이 있어야 함");
+      fire(del!, "click");
+      assertEqual(sink.join(","), "delete:p1", "행 클릭(불러오기)과 섞이면 안 됨");
+    });
+  });
+
+  it("render 를 동시에 불러도 목록이 중복되지 않는다", async () => {
+    const store = await freshStore();
+    await store.putProject(storedProject("p1", "하나", 1));
+    await store.putProject(storedProject("p2", "둘", 2));
+    const sink: string[] = [];
+    await withRichDom(async (root) => {
+      const panel = new ProjectPanel(root as any, store, projectPanelHandlers(sink));
+      await Promise.all([panel.render(), panel.render(), panel.render()]);
+      const rows = root.children.filter((c) => c.className === "project-list");
+      assertEqual(rows.length, 1, `project-list 는 하나여야 함 (실제 ${rows.length})`);
+      const listEl = rows[0]!;
+      assertEqual(listEl.children.length, 2, `프로젝트 행은 2개여야 함 (실제 ${listEl.children.length})`);
+    });
   });
 });

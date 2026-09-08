@@ -153,6 +153,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 221 passed, 0 failed
 - **비고:** DB 버전 상향 없이 기존 meta 스토어를 재사용(모의 IDB 가 업그레이드를 모사하지 않음).
 
+### [2026-09-08 06:32] 리뷰 #15(2/2) 프로젝트 이름 변경·삭제 UI, 렌더 경합 제거
+- **기획:** 목록 행에 ✎/🗑 버튼 추가, 저장 시 기본 이름이면 이름을 한 번 질의. `render()`에 세대 토큰을 둬 마지막 호출만 DOM 반영.
+- **TC:** (정상) 버튼 존재·삭제 핸들러 호출. (엣지) `render()` 3회 동시 호출 시 목록 1개·행 2개 유지.
+- **개발:** `src/ui/ProjectPanel.ts`, `src/app/PainterApp.ts`, `src/style.css`, `src/test/round10.test.ts`
+- **검증:** 223 passed, 0 failed
+- **비고:** 이름 변경은 저장본 JSON 의 `meta.name` 까지 갱신. 열려 있던 프로젝트 삭제 시 `lastOpenProjectId` 도 정리.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

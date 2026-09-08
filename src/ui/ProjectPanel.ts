@@ -9,9 +9,17 @@ export interface ProjectPanelHandlers {
   onImportJson: (file: File) => void;
   onImportPng: (file: File) => void;
   onChromaKey: () => void;
+  /** 목록에서 프로젝트를 지운다(autosave 포함). */
+  onDelete: (id: string) => void;
+  /** 목록에서 프로젝트 이름을 바꾼다. */
+  onRename: (id: string, name: string) => void;
 }
 
 export class ProjectPanel {
+  // render 가 async 라 여러 번 겹쳐 불리면 목록이 두 번 붙었다. 마지막 호출만
+  // DOM 에 반영되도록 세대 토큰을 둔다.
+  private generation = 0;
+
   constructor(
     private root: HTMLElement,
     private store: IndexedDBStore,
@@ -19,6 +27,12 @@ export class ProjectPanel {
   ) {}
 
   async render(): Promise<void> {
+    const gen = ++this.generation;
+    // 목록 조회(await) 를 먼저 끝내고, 그 사이 더 새로운 render 가 시작됐다면
+    // DOM 은 건드리지 않는다.
+    const projects: ProjectMeta[] = await this.store.listProjects();
+    if (gen !== this.generation) return;
+
     this.root.innerHTML = "";
     const header = document.createElement("div");
     header.className = "panel-header";
@@ -78,7 +92,6 @@ export class ProjectPanel {
 
     const list = document.createElement("div");
     list.className = "project-list";
-    const projects: ProjectMeta[] = await this.store.listProjects();
     if (projects.length === 0) {
       const empty = document.createElement("div");
       empty.className = "project-empty";
@@ -88,9 +101,40 @@ export class ProjectPanel {
       for (const p of projects) {
         const row = document.createElement("div");
         row.className = "project-row";
-        row.textContent = `${p.name} (${new Date(p.updatedAt).toLocaleString()})`;
-        row.title = "클릭하여 불러오기";
-        row.addEventListener("click", () => this.handlers.onLoad(p.id));
+
+        const label = document.createElement("span");
+        label.className = "project-name";
+        label.textContent = `${p.name} (${new Date(p.updatedAt).toLocaleString()})`;
+        label.title = "클릭하여 불러오기";
+        label.addEventListener("click", () => this.handlers.onLoad(p.id));
+        row.appendChild(label);
+
+        const rename = document.createElement("button");
+        rename.type = "button";
+        rename.className = "project-rename";
+        rename.textContent = "✎";
+        rename.title = "이름 변경";
+        rename.addEventListener("click", (e: Event) => {
+          e.stopPropagation();
+          const next = prompt("새 이름", p.name);
+          if (next === null) return;
+          const trimmed = next.trim();
+          if (trimmed.length === 0) return;
+          this.handlers.onRename(p.id, trimmed);
+        });
+        row.appendChild(rename);
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "project-delete";
+        del.textContent = "🗑";
+        del.title = "삭제";
+        del.addEventListener("click", (e: Event) => {
+          e.stopPropagation();
+          this.handlers.onDelete(p.id);
+        });
+        row.appendChild(del);
+
         list.appendChild(row);
       }
     }

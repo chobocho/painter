@@ -384,14 +384,31 @@ html, body {
 .btn-row label input { display: none; }
 
 .project-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   background: var(--panel2);
   border: 1px solid var(--border);
   padding: 4px 6px;
   border-radius: 3px;
-  cursor: pointer;
   font-size: 11px;
 }
 .project-row:hover { border-color: var(--accent); }
+/* 이름은 남는 폭을 다 쓰고, 길면 말줄임. 버튼은 오른쪽에 고정. */
+.project-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.project-rename, .project-delete {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1;
+}
 
 .project-empty {
   font-size: 11px;

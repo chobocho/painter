@@ -67,6 +67,9 @@ export function canRemoveLayer(count: number): boolean {
   return count > 1;
 }
 
+/** 새 프로젝트의 기본 이름. 저장할 때 한 번 실제 이름을 묻는 기준이 된다. */
+export const DEFAULT_PROJECT_NAME = "Untitled";
+
 /** 캔버스 한 변의 상한. 이보다 크면 브라우저가 캔버스 생성에 실패한다. */
 export const MAX_PROJECT_SIZE = 8192;
 
@@ -152,7 +155,7 @@ export class PainterApp {
   /** 툴바 컨트롤을 현재 settings 로 되돌리는 함수. 프로젝트를 불러오면 부른다. */
   private syncControls: (() => void) | null = null;
   private projectId: string = Uid.next();
-  private projectName: string = "Untitled";
+  private projectName: string = DEFAULT_PROJECT_NAME;
   private createdAt: number = Date.now();
   private projectWidth: number = 1920;
   private projectHeight: number = 1280;
@@ -304,6 +307,8 @@ export class PainterApp {
       onImportJson: (f) => this.importJson(f),
       onImportPng: (f) => this.importPng(f),
       onChromaKey: () => this.applyChromaKey(),
+      onDelete: (id) => void this.deleteProject(id),
+      onRename: (id, name) => void this.renameProject(id, name),
     });
     void this.projectPanel.render();
 
@@ -675,7 +680,7 @@ export class PainterApp {
       return;
     }
     this.projectId = Uid.next();
-    this.projectName = "Untitled";
+    this.projectName = DEFAULT_PROJECT_NAME;
     this.createdAt = Date.now();
     if (this.autoSaver) this.autoSaver.setProjectId(this.projectId);
     this.newProjectInternal(w, h);
@@ -688,6 +693,12 @@ export class PainterApp {
   }
 
   async saveProject(): Promise<void> {
+    // 이름이 기본값이면 한 번 물어본다. 예전에는 전부 "Untitled" 라 목록에서
+    // 어떤 그림인지 구분할 수 없었다.
+    if (this.projectName === DEFAULT_PROJECT_NAME) {
+      const name = prompt("프로젝트 이름", DEFAULT_PROJECT_NAME);
+      if (name !== null && name.trim().length > 0) this.projectName = name.trim();
+    }
     const state = this.buildState();
     const json = ProjectCodec.encode(state);
     await this.store.putProject({
@@ -701,6 +712,41 @@ export class PainterApp {
     });
     await this.store.putMeta("lastOpenProjectId", this.projectId);
     void this.projectPanel.render();
+  }
+
+  /** 프로젝트와 그 autosave 를 함께 지운다. */
+  async deleteProject(id: string): Promise<void> {
+    try {
+      await this.store.deleteProject(id);
+      if (id === this.projectId) {
+        // 열려 있던 프로젝트를 지웠으면 복원 대상도 지운다.
+        await this.store.putMeta("lastOpenProjectId", undefined);
+      }
+      await this.projectPanel.render();
+      this.flashStatus("✓ 프로젝트를 삭제했습니다", 1800);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.flashStatus(`⚠️ 삭제 실패: ${msg}`, 3000);
+      console.error("deleteProject failed", e);
+    }
+  }
+
+  /** 저장된 프로젝트의 이름을 바꾼다. 저장본 JSON 안의 meta.name 도 함께 고친다. */
+  async renameProject(id: string, name: string): Promise<void> {
+    try {
+      const p = await this.store.getProject(id);
+      if (!p) return;
+      const state = ProjectCodec.decode(p.projectJson);
+      state.meta.name = name;
+      await this.store.putProject({ ...p, name, updatedAt: Date.now(), projectJson: ProjectCodec.encode(state) });
+      if (id === this.projectId) this.projectName = name;
+      await this.projectPanel.render();
+      this.flashStatus(`✓ 이름을 "${name}" 로 바꿨습니다`, 1800);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.flashStatus(`⚠️ 이름 변경 실패: ${msg}`, 3000);
+      console.error("renameProject failed", e);
+    }
   }
 
   async loadProject(id: string): Promise<void> {
