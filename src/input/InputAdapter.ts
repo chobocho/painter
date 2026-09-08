@@ -41,6 +41,8 @@ export class InputAdapter {
         shift: e.shiftKey,
         ctrl: e.ctrlKey || e.metaKey,
         alt: e.altKey,
+        clientX: e.clientX,
+        clientY: e.clientY,
       };
       const ctx = this.bindings.getToolContext();
       const pointerId = e.pointerId ?? 0;

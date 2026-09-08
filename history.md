@@ -118,6 +118,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** 197 passed, 0 failed
 - **비고:** PNG 가져오기가 5개 제한을 우회하던 경로 차단, 마지막 레이어 삭제 시 안내 표시.
 
+### [2026-09-08 05:35] 리뷰 #11 글자 도구 오버레이·폭·중복 커밋 수정
+- **기획:** 오버레이 위치를 화면 좌표(`ToolPointer.clientX/Y`)로, 폭은 `measureText`(restore 전 측정)로, 커밋은 `done` 플래그로 1회 보장.
+- **TC:** (정상) Enter 커밋 1회. (엣지) Escape 후 blur 시 미커밋, Enter 후 blur 중복 방지, 한글 1em 폭 undo 잔존 0, 프로젝트≠화면 좌표.
+- **개발:** `src/tools/TextTool.ts`, `src/tools/Tool.ts`, `src/input/InputAdapter.ts`, `src/test/round10.test.ts`
+- **검증:** 201 passed, 0 failed
+- **비고:** 측정이 `restore()` 뒤에 있어 폰트가 10px 로 돌아가던 문제를 테스트가 잡아냄. 미사용 `canvas` 변수 제거.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries

@@ -57,17 +57,15 @@ export class TextTool implements Tool {
     const input = g.document.createElement("input") as HTMLInputElement;
     input.type = "text";
     input.placeholder = "텍스트 입력 후 Enter";
-    // Position near the click. We need a positioned ancestor; use body as
-    // fallback if we cannot walk up to #canvas-area.
-    const canvas = (ctx.stack as unknown as { _canvasEl?: HTMLElement })._canvasEl
-      ?? (g as unknown as Record<string, unknown>)["document"];
 
-    // Lay the overlay over the canvas area using fixed positioning with a
-    // slight offset from the pointer so it doesn't cover the click point.
+    // position:fixed 는 화면(viewport) 좌표계다. 예전에는 프로젝트 좌표 p.x/p.y 를
+    // 그대로 써서, 화면보다 큰 프로젝트에서는 오버레이가 엉뚱한 곳에 떴다.
+    const screenX = p.clientX ?? p.x;
+    const screenY = p.clientY ?? p.y;
     input.style.cssText = [
       "position:fixed",
-      `left:${Math.min(p.x + 8, window.innerWidth - 220)}px`,
-      `top:${Math.min(p.y + 4, window.innerHeight - 50)}px`,
+      `left:${Math.min(screenX + 8, window.innerWidth - 220)}px`,
+      `top:${Math.min(screenY + 4, window.innerHeight - 50)}px`,
       "width:200px",
       "z-index:9999",
       "font-size:16px",
@@ -78,11 +76,18 @@ export class TextTool implements Tool {
       "color:#000",
     ].join(";");
 
+    // 오버레이는 한 번만 끝난다. 브라우저는 input 을 지운 뒤에도 blur 를 한 번
+    // 더 보내므로, 플래그가 없으면 Enter 커밋이 두 번 찍히고 Escape 로 취소한
+    // 글자도 blur 에서 다시 찍혔다.
+    let done = false;
     const cleanup = () => {
+      if (done) return;
+      done = true;
       if (input.parentNode) input.parentNode.removeChild(input);
     };
 
     const commit = () => {
+      if (done) return;
       const text = input.value.trim();
       cleanup();
       if (text.length > 0) this._stamp(text, p, ctx, layer);
@@ -117,9 +122,16 @@ export class TextTool implements Tool {
       // Fallback: solid rect proportional to font size (test environments).
       lctx.fillRect(p.x, p.y, text.length * Math.round(fontPx * 0.6), fontPx);
     }
+    // 실제 렌더 폭을 재서 쓴다. 0.6em 추정은 한글(약 1em)에 부족해 undo rect 가
+    // 글자 오른쪽을 덮지 못했다. 반드시 restore() 전에 재야 한다 — 복원 뒤에는
+    // 폰트가 기본값(10px)으로 돌아가 폭이 절반 이하로 나온다.
+    const measure = (lctx as unknown as { measureText?: (t: string) => { width: number } }).measureText;
+    const textW = typeof measure === "function"
+      ? Math.ceil(measure.call(lctx, text).width)
+      : text.length * Math.round(fontPx * 0.6);
     lctx.restore();
 
-    const approxW = text.length * Math.round(fontPx * 0.6) + 4;
+    const approxW = textW + 4;
     const bbox = newBbox(p.x, p.y);
     expandBbox(bbox, p.x + approxW, p.y + fontPx);
     ctx.stack.markDirty({ x: Math.floor(p.x), y: Math.floor(p.y), w: approxW + 4, h: fontPx + 4 });

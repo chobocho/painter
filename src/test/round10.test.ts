@@ -435,8 +435,8 @@ function makeEl(): FakeEl {
     _innerHTML: "",
     get innerHTML() { return this._innerHTML; },
     set innerHTML(v: string) { this._innerHTML = v; this.children = []; },
-    appendChild(c: FakeEl) { this.children.push(c); return c; },
-    removeChild(c: FakeEl) { const i = this.children.indexOf(c); if (i >= 0) this.children.splice(i, 1); return c; },
+    appendChild(c: FakeEl) { this.children.push(c); (c as any).parentNode = this; return c; },
+    removeChild(c: FakeEl) { const i = this.children.indexOf(c); if (i >= 0) this.children.splice(i, 1); (c as any).parentNode = null; return c; },
     addEventListener(t: string, f: (e: any) => void) { (this.listeners[t] ||= []).push(f); },
     removeEventListener() {},
     querySelector: () => null,
@@ -466,8 +466,8 @@ function findByClass(root: FakeEl, cls: string): FakeEl | null {
   return null;
 }
 
-function fire(el: FakeEl, type: string): void {
-  for (const f of el.listeners[type] ?? []) f({ stopPropagation() {}, preventDefault() {}, target: el });
+function fire(el: FakeEl, type: string, extra: Record<string, unknown> = {}): void {
+  for (const f of el.listeners[type] ?? []) f({ stopPropagation() {}, preventDefault() {}, target: el, ...extra });
 }
 
 describe("리뷰 #9 — 투명도 슬라이더 이벤트 분리", () => {
@@ -715,5 +715,106 @@ describe("리뷰 #10/#19 — 레이어 개수 가드", () => {
     assertFalse(canRemove!(0), "빈 스택에서는 삭제 불가");
     assertFalse(canRemove!(1), "마지막 한 장은 지운다");
     assertTrue(canRemove!(2), "2장부터 삭제 가능");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 리뷰 #11 — 글자 도구
+//
+//   * 오버레이 <input> 위치에 프로젝트 좌표를 화면 px 로 그대로 써서 엉뚱한
+//     곳에 떴다.
+//   * 폭 추정 0.6em 은 한글(약 1em)에 부족해 undo rect 가 글자 오른쪽을
+//     덮지 못한다 → measureText 사용.
+//   * Escape 로 취소해도 이어지는 blur 에서 commit 이 다시 불렸다.
+// ---------------------------------------------------------------------------
+
+import { TextTool } from "../tools/TextTool.js";
+
+/** 한글처럼 1em 폭으로 그려지는 컨텍스트를 흉내낸다. */
+function makeWideTextCtx(layer: Layer, emFactor: number): void {
+  const lctx = layer.getCtx() as any;
+  const fontPx = () => parseInt(String(lctx.font).replace(/[^0-9].*$/, ""), 10) || 12;
+  lctx.measureText = (t: string) => ({ width: Math.round(t.length * fontPx() * emFactor) });
+  lctx.fillText = (t: string, x: number, y: number) => {
+    const w = Math.round(t.length * fontPx() * emFactor);
+    lctx.fillRect(Math.round(x), Math.round(y), w, fontPx());
+  };
+}
+
+describe("리뷰 #11 — 글자 도구 undo 범위", () => {
+  it("한글 폭(1em)도 undo rect 가 모두 덮는다", () => {
+    const { ctx, history, stack, layer } = bootstrap(256);
+    ctx.settings.color = { r: 255, g: 0, b: 0, a: 255 };
+    ctx.settings.brushSize = 4; // fontPx = 24
+    makeWideTextCtx(layer, 1);
+
+    const tool = new TextTool();
+    tool.setNextText("한글테스트글자");
+    tool.onPointerDown(pointer(10, 10), ctx);
+
+    let drawn = 0;
+    const d = layer.getPixels(0, 0, 256, 256).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i]! > 0) drawn++;
+    assertTrue(drawn > 0, "글자가 그려져야 함");
+
+    history.undo({ stack });
+    const after = layer.getPixels(0, 0, 256, 256).data;
+    let left = 0;
+    for (let i = 3; i < after.length; i += 4) if (after[i]! > 0) left++;
+    assertEqual(left, 0, `undo 후 잔존 픽셀 0 이어야 함 (그림 ${drawn}, 남음 ${left})`);
+  });
+});
+
+describe("리뷰 #11 — 오버레이 입력", () => {
+  function withOverlayDom<T>(fn: (body: FakeEl) => T): T {
+    const g = globalThis as any;
+    const savedDoc = g.document;
+    const savedWin = g.window;
+    const body = makeEl();
+    g.document = { createElement: (tag: string) => { const e = makeEl(); e.tagName = tag.toUpperCase(); return e; }, body };
+    g.window = { innerWidth: 1000, innerHeight: 800 };
+    try { return fn(body); } finally { g.document = savedDoc; g.window = savedWin; }
+  }
+
+  it("Escape 로 취소하면 blur 가 와도 커밋하지 않는다", () => {
+    withOverlayDom((body) => {
+      const { ctx, history } = bootstrap(64);
+      const tool = new TextTool();
+      tool.onPointerDown(pointer(5, 5), ctx);
+
+      const input = body.children[0];
+      assertTrue(input !== undefined, "오버레이 input 이 만들어져야 함");
+      input!.value = "취소할글";
+      fire(input!, "keydown", { key: "Escape" });
+      fire(input!, "blur"); // 브라우저는 제거 직후 blur 를 한 번 더 보낸다
+      assertEqual(history.size().past, 0, "취소한 글자는 기록되면 안 됨");
+    });
+  });
+
+  it("Enter 로 커밋한 뒤 blur 가 와도 두 번 찍히지 않는다", () => {
+    withOverlayDom((body) => {
+      const { ctx, history } = bootstrap(64);
+      const tool = new TextTool();
+      tool.onPointerDown(pointer(5, 5), ctx);
+
+      const input = body.children[0]!;
+      input.value = "가";
+      fire(input, "keydown", { key: "Enter" });
+      fire(input, "blur");
+      assertEqual(history.size().past, 1, "커밋은 한 번만");
+    });
+  });
+
+  it("오버레이는 프로젝트 좌표가 아니라 화면 좌표에 뜬다", () => {
+    withOverlayDom((body) => {
+      const { ctx } = bootstrap(64);
+      const tool = new TextTool();
+      // 프로젝트 좌표 (5,5) 인데 화면에서는 (500,400) 근처를 눌렀다.
+      tool.onPointerDown({ ...pointer(5, 5), clientX: 500, clientY: 400 } as any, ctx);
+
+      const css = String(body.children[0]!.style.cssText);
+      assertTrue(css.includes("left:508px"), `화면 좌표 기준이어야 함 (실제 ${css})`);
+      assertTrue(css.includes("top:404px"), `화면 좌표 기준이어야 함 (실제 ${css})`);
+    });
   });
 });

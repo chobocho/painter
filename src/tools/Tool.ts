@@ -12,6 +12,9 @@ export interface ToolPointer {
   shift: boolean;
   ctrl: boolean;
   alt: boolean;
+  /** 화면(viewport) 좌표. 글자 도구 오버레이처럼 DOM 을 띄울 때 쓴다. */
+  clientX?: number;
+  clientY?: number;
 }
 
 export interface SymmetryConfig {
