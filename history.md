@@ -188,6 +188,13 @@ Round 8 배포 후 사용자가 실기기(Fold7)에서 테스트하면서 새로
 - **검증:** build.sh 완주 (230 passed, 0 failed / BUILD OK 156K)
 - **비고:** build.bat 의 존재하지 않는 `legacy/img` 복사·정의되지 않은 `!size!`·다중 파일 스테이징 제거. README 빌드/테스트 절도 단일 파일 기준으로 갱신.
 
+### [2026-09-08 07:27] 리뷰 #25 CSS 접근성·모바일 높이 보정
+- **기획:** 도구 라벨 7px/버튼 8px → 10px 로 상향하고 버튼 최소 높이 36→42px. `#app` 높이에 `100dvh` 폴백 추가.
+- **TC:** CSS 라 자동 테스트 대상 아님 — `#tool-area` 가 `overflow-y:auto`/`align-content:start` 라 높이 증가가 레이아웃을 깨지 않음을 확인.
+- **개발:** `src/style.css`
+- **검증:** 230 passed, 0 failed (회귀 없음)
+- **비고:** `100vh` 를 먼저 두고 `100dvh` 로 덮어 미지원 브라우저 폴백 유지.
+
 ---
 ## Archive
 - [2026-04](history/archive/history-2026-04.md) — 8 entries
