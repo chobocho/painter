@@ -645,9 +645,13 @@ html, body {
     if (g.Buffer) {
       return g.Buffer.from(new Uint8Array(data.buffer, data.byteOffset, data.byteLength)).toString("base64");
     }
-    let bin = "";
-    for (let i = 0; i < data.length; i++)
-      bin += String.fromCharCode(data[i]);
+    const CHUNK = 8192;
+    const parts = [];
+    for (let i = 0; i < data.length; i += CHUNK) {
+      const end = Math.min(i + CHUNK, data.length);
+      parts.push(String.fromCharCode.apply(null, Array.prototype.slice.call(data, i, end)));
+    }
+    const bin = parts.join("");
     const g2 = globalThis;
     return g2.btoa ? g2.btoa(bin) : bin;
   }
@@ -1795,6 +1799,7 @@ html, body {
         return;
       const drag = this.drag;
       drag.last = { x: p.x, y: p.y };
+      drag.bbox = newBbox(drag.start.x, drag.start.y);
       expandBbox(drag.bbox, p.x, p.y);
       restoreFromShadow(drag.layer, drag.shadow);
       const lctx = drag.layer.getCtx();
@@ -1804,7 +1809,11 @@ html, body {
       lctx.lineWidth = Math.max(1, ctx.settings.brushSize);
       lctx.fillStyle = Color.toCss(ctx.settings.color);
       lctx.strokeStyle = Color.toCss(ctx.settings.color);
-      this.drawShape(lctx, drag.start.x, drag.start.y, p.x, p.y, this.filled);
+      const extent = this.drawShape(lctx, drag.start.x, drag.start.y, p.x, p.y, this.filled);
+      if (extent) {
+        expandBbox(drag.bbox, extent.minX, extent.minY);
+        expandBbox(drag.bbox, extent.maxX, extent.maxY);
+      }
       lctx.restore();
       ctx.stack.markDirty(Rect.create(0, 0, drag.layer.width, drag.layer.height));
     }
@@ -1870,6 +1879,12 @@ html, body {
         lctx.fillRect(x0, y0, dx, dy);
       else
         lctx.strokeRect(x0, y0, dx, dy);
+      return {
+        minX: Math.min(x0, x0 + dx),
+        minY: Math.min(y0, y0 + dy),
+        maxX: Math.max(x0, x0 + dx),
+        maxY: Math.max(y0, y0 + dy)
+      };
     }
   };
   var EllipseTool = class extends TwoPointShapeTool {
@@ -1904,6 +1919,7 @@ html, body {
         lctx.fill();
       else
         lctx.stroke();
+      return { minX: cx - rx, minY: cy - ry, maxX: cx + rx, maxY: cy + ry };
     }
   };
   var TriangleTool = class extends TwoPointShapeTool {
@@ -1927,6 +1943,12 @@ html, body {
         lctx.fill();
       else
         lctx.stroke();
+      return {
+        minX: Math.min(x0, x1, x2),
+        minY: Math.min(y0, y1),
+        maxX: Math.max(x0, x1, x2),
+        maxY: Math.max(y0, y1)
+      };
     }
   };
 
@@ -2022,6 +2044,15 @@ html, body {
   };
 
   // dist/src/tools/FillBucketTool.js
+  function cropRGBA(data, srcW, r) {
+    const out = new Uint8ClampedArray(r.w * r.h * 4);
+    const rowBytes = r.w * 4;
+    for (let y = 0; y < r.h; y++) {
+      const s = ((r.y + y) * srcW + r.x) * 4;
+      out.set(data.subarray(s, s + rowBytes), y * rowBytes);
+    }
+    return out;
+  }
   var FillBucketTool = class {
     constructor() {
       Object.defineProperty(this, "id", {
@@ -2046,36 +2077,45 @@ html, body {
       if (sx < 0 || sy < 0 || sx >= layer.width || sy >= layer.height)
         return;
       const lctx = layer.getCtx();
-      const beforeImage = lctx.getImageData(0, 0, layer.width, layer.height);
-      const beforeCopy = new Uint8ClampedArray(beforeImage.data);
       const region = lctx.getImageData(0, 0, layer.width, layer.height);
-      const startIdx = (sy * region.width + sx) * 4;
-      const target = [
-        region.data[startIdx],
-        region.data[startIdx + 1],
-        region.data[startIdx + 2],
-        region.data[startIdx + 3]
-      ];
+      const w = region.width;
+      const h = region.height;
+      const src = new Uint8ClampedArray(region.data);
+      const startIdx = (sy * w + sx) * 4;
+      const target = [src[startIdx], src[startIdx + 1], src[startIdx + 2], src[startIdx + 3]];
       const replacement = ctx.settings.color;
       if (target[0] === replacement.r && target[1] === replacement.g && target[2] === replacement.b && target[3] === replacement.a)
         return;
       const tol2 = ctx.settings.tolerance * ctx.settings.tolerance * 3;
+      const visited = new Uint8Array(w * h);
+      let minX = w, minY = h, maxX = -1, maxY = -1;
       const matches = (x, y) => {
-        if (x < 0 || y < 0 || x >= region.width || y >= region.height)
+        if (x < 0 || y < 0 || x >= w || y >= h)
           return false;
-        const i = (y * region.width + x) * 4;
-        const dr = region.data[i] - target[0];
-        const dg = region.data[i + 1] - target[1];
-        const db = region.data[i + 2] - target[2];
-        const da = region.data[i + 3] - target[3];
+        if (visited[y * w + x])
+          return false;
+        const i = (y * w + x) * 4;
+        const dr = src[i] - target[0];
+        const dg = src[i + 1] - target[1];
+        const db = src[i + 2] - target[2];
+        const da = src[i + 3] - target[3];
         return dr * dr + dg * dg + db * db + da * da <= tol2;
       };
       const set = (x, y) => {
-        const i = (y * region.width + x) * 4;
+        const i = (y * w + x) * 4;
         region.data[i] = replacement.r;
         region.data[i + 1] = replacement.g;
         region.data[i + 2] = replacement.b;
         region.data[i + 3] = replacement.a;
+        visited[y * w + x] = 1;
+        if (x < minX)
+          minX = x;
+        if (y < minY)
+          minY = y;
+        if (x > maxX)
+          maxX = x;
+        if (y > maxY)
+          maxY = y;
       };
       const stack = [sx, sy];
       while (stack.length > 0) {
@@ -2084,28 +2124,30 @@ html, body {
         if (!matches(x, y))
           continue;
         let xl = x;
-        while (xl >= 0 && matches(xl, y))
+        while (matches(xl, y))
           xl--;
         xl++;
         let xr = x;
-        while (xr < region.width && matches(xr, y))
+        while (matches(xr, y))
           xr++;
         xr--;
         for (let xx = xl; xx <= xr; xx++) {
           set(xx, y);
-          if (y > 0 && matches(xx, y - 1))
+          if (matches(xx, y - 1))
             stack.push(xx, y - 1);
-          if (y < region.height - 1 && matches(xx, y + 1))
+          if (matches(xx, y + 1))
             stack.push(xx, y + 1);
         }
       }
+      if (maxX < minX)
+        return;
       lctx.putImageData(region, 0, 0);
-      const r = Rect.create(0, 0, layer.width, layer.height);
+      const r = Rect.create(minX, minY, maxX - minX + 1, maxY - minY + 1);
       ctx.history.execute(new PixelEditCommand({
         layerId: layer.id,
         rect: r,
-        before: { width: beforeImage.width, height: beforeImage.height, data: beforeCopy },
-        after: { width: region.width, height: region.height, data: new Uint8ClampedArray(region.data) },
+        before: { width: r.w, height: r.h, data: cropRGBA(src, w, r) },
+        after: { width: r.w, height: r.h, data: cropRGBA(region.data, w, r) },
         label: "Fill"
       }), { stack: ctx.stack });
       ctx.stack.markDirty(r);
@@ -2854,11 +2896,11 @@ html, body {
         writable: true,
         value: bindings
       });
-      Object.defineProperty(this, "down", {
+      Object.defineProperty(this, "stroke", {
         enumerable: true,
         configurable: true,
         writable: true,
-        value: false
+        value: null
       });
       Object.defineProperty(this, "cleanup", {
         enumerable: true,
@@ -2885,27 +2927,32 @@ html, body {
           ctrl: e.ctrlKey || e.metaKey,
           alt: e.altKey
         };
-        const tool = this.bindings.getActiveTool();
         const ctx = this.bindings.getToolContext();
+        const pointerId = e.pointerId ?? 0;
         if (kind === "down") {
-          this.down = true;
+          if (this.stroke)
+            return;
+          this.stroke = { tool: this.bindings.getActiveTool(), pointerId };
           this.bindings.onPointerStateChange?.(true);
           try {
-            this.el.setPointerCapture?.(e.pointerId);
+            this.el.setPointerCapture?.(pointerId);
           } catch {
           }
-          tool.onPointerDown(p, ctx);
-        } else if (kind === "move" && this.down) {
-          tool.onPointerMove(p, ctx);
+          this.stroke.tool.onPointerDown(p, ctx);
+          return;
+        }
+        const stroke = this.stroke;
+        if (!stroke || stroke.pointerId !== pointerId)
+          return;
+        if (kind === "move") {
+          stroke.tool.onPointerMove(p, ctx);
         } else if (kind === "up") {
-          if (this.down)
-            tool.onPointerUp(p, ctx);
-          this.down = false;
+          this.stroke = null;
+          stroke.tool.onPointerUp(p, ctx);
           this.bindings.onPointerStateChange?.(false);
         } else if (kind === "cancel") {
-          if (this.down)
-            tool.onPointerCancel(ctx);
-          this.down = false;
+          this.stroke = null;
+          stroke.tool.onPointerCancel(ctx);
           this.bindings.onPointerStateChange?.(false);
         }
       };
@@ -3140,6 +3187,17 @@ html, body {
         void this.tick();
       }, this.opts.intervalMs ?? 5e3);
     }
+    /**
+     * 자동 저장 대상 프로젝트를 바꾼다. 프로젝트를 새로 만들거나 불러온 뒤
+     * 반드시 불러야 한다. 이걸 빠뜨리면 부팅 때 쓰던 임시 ID 아래에 계속
+     * 저장되고, 복원은 lastOpenProjectId 를 보므로 지난 세션의 옛 상태가 올라온다.
+     */
+    setProjectId(projectId) {
+      this.projectId = projectId;
+    }
+    getProjectId() {
+      return this.projectId;
+    }
     stop() {
       if (this.timer)
         clearInterval(this.timer);
@@ -3162,6 +3220,7 @@ html, body {
         projectJson: this.opts.serialize()
       };
       await this.store.putAutoSave(payload);
+      await this.store.putMeta("lastOpenProjectId", this.projectId);
       this.dirty = false;
     }
     isDirty() {
@@ -3408,7 +3467,16 @@ ${t.description}`;
         writable: true,
         value: false
       });
-      stack.on("change", () => this.render());
+      Object.defineProperty(this, "draggingOpacity", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: false
+      });
+      stack.on("change", () => {
+        if (!this.draggingOpacity)
+          this.render();
+      });
     }
     isCollapsed() {
       return this.collapsed;
@@ -3504,6 +3572,12 @@ ${t.description}`;
         opacity.title = "\uD22C\uBA85\uB3C4";
         opacity.addEventListener("input", (e) => {
           e.stopPropagation();
+          this.draggingOpacity = true;
+          this.handlers.onOpacityPreview(layer.id, parseFloat(opacity.value));
+        });
+        opacity.addEventListener("change", (e) => {
+          e.stopPropagation();
+          this.draggingOpacity = false;
           this.handlers.onOpacity(layer.id, parseFloat(opacity.value));
         });
         opacity.addEventListener("click", (e) => e.stopPropagation());
@@ -3750,8 +3824,58 @@ ${t.description}`;
     c.height = h;
     return c;
   };
+  var OpacityDrag = class {
+    constructor() {
+      Object.defineProperty(this, "start", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: null
+      });
+    }
+    preview(stack, id, opacity) {
+      const layer = stack.get(id);
+      if (!layer)
+        return;
+      if (!this.start || this.start.id !== id)
+        this.start = { id, opacity: layer.opacity };
+      stack.setOpacity(id, opacity);
+    }
+    commit(stack, history, id, opacity) {
+      const layer = stack.get(id);
+      if (!layer)
+        return;
+      const beforeOpacity = this.start && this.start.id === id ? this.start.opacity : layer.opacity;
+      this.start = null;
+      if (beforeOpacity === opacity) {
+        stack.setOpacity(id, opacity);
+        return;
+      }
+      history.execute(new SetLayerPropsCommand({
+        layerId: id,
+        before: { visible: layer.visible, opacity: beforeOpacity, name: layer.name },
+        after: { opacity }
+      }), { stack });
+    }
+  };
+  function historySnapshot(layer) {
+    return layer.serialize({ compact: true });
+  }
+  function pickRestoreJson(auto, project) {
+    if (!auto)
+      return project?.projectJson;
+    if (!project)
+      return auto.projectJson;
+    return auto.savedAt >= project.updatedAt ? auto.projectJson : project.projectJson;
+  }
   var PainterApp = class {
     constructor() {
+      Object.defineProperty(this, "opacityDrag", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: new OpacityDrag()
+      });
       Object.defineProperty(this, "projectId", {
         enumerable: true,
         configurable: true,
@@ -3972,7 +4096,8 @@ ${t.description}`;
           this.scheduleRender();
         },
         onToggleVisible: (id, v) => this.executeLayerProps(id, { visible: v }),
-        onOpacity: (id, o) => this.executeLayerProps(id, { opacity: o }),
+        onOpacity: (id, o) => this.opacityDrag.commit(this.stack, this.history, id, o),
+        onOpacityPreview: (id, o) => this.opacityDrag.preview(this.stack, id, o),
         onMoveUp: (id) => this.moveLayer(id, 1),
         onMoveDown: (id) => this.moveLayer(id, -1),
         onRename: (id, name) => this.executeLayerProps(id, { name })
@@ -4057,9 +4182,13 @@ ${t.description}`;
       try {
         const lastId = await this.store.getMeta("lastOpenProjectId");
         if (lastId) {
-          const auto = await this.store.getAutoSave(lastId);
-          if (auto) {
-            this.applyState(ProjectCodec.decode(auto.projectJson));
+          const [auto, project] = await Promise.all([
+            this.store.getAutoSave(lastId),
+            this.store.getProject(lastId)
+          ]);
+          const json = pickRestoreJson(auto, project);
+          if (json) {
+            this.applyState(ProjectCodec.decode(json));
             void this.projectPanel.render();
           }
         }
@@ -4181,7 +4310,7 @@ ${t.description}`;
       }
       try {
         const layer = new Layer({ name: `\uB808\uC774\uC5B4 ${this.stack.size() + 1}`, width: this.projectWidth, height: this.projectHeight, factory: realCanvasFactory });
-        this.history.execute(new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }), { stack: this.stack });
+        this.history.execute(new AddLayerCommand({ snapshot: historySnapshot(layer), index: this.stack.size() }), { stack: this.stack });
         this.scheduleRender();
         this.flashStatus(`\u2713 \uB808\uC774\uC5B4 \uCD94\uAC00 (${this.stack.size()}/${LAYER_LIMIT})`, 1200);
       } catch (e) {
@@ -4195,7 +4324,7 @@ ${t.description}`;
       if (!layer)
         return;
       const index = this.stack.getAll().findIndex((l) => l.id === id);
-      this.history.execute(new RemoveLayerCommand({ snapshot: layer.serialize(), index }), { stack: this.stack });
+      this.history.execute(new RemoveLayerCommand({ snapshot: historySnapshot(layer), index }), { stack: this.stack });
     }
     moveLayer(id, delta) {
       const layers = this.stack.getAll();
@@ -4308,6 +4437,8 @@ ${t.description}`;
         this.layerPanel.render();
       if (this.historyPanel)
         this.historyPanel.render();
+      if (this.autoSaver)
+        this.autoSaver.setProjectId(this.projectId);
       this.scheduleRender();
     }
     newProject() {
@@ -4316,6 +4447,8 @@ ${t.description}`;
       this.projectId = Uid.next();
       this.projectName = "Untitled";
       this.createdAt = Date.now();
+      if (this.autoSaver)
+        this.autoSaver.setProjectId(this.projectId);
       this.newProjectInternal(w, h);
       this.scheduleRender();
       void this.saveProject();
@@ -4379,7 +4512,7 @@ ${t.description}`;
     async importPng(file) {
       try {
         const layer = await importPngFile(file, this.projectWidth, this.projectHeight, realCanvasFactory, file.name);
-        this.history.execute(new AddLayerCommand({ snapshot: layer.serialize(), index: this.stack.size() }), { stack: this.stack });
+        this.history.execute(new AddLayerCommand({ snapshot: historySnapshot(layer), index: this.stack.size() }), { stack: this.stack });
         this.scheduleRender();
         this.flashStatus(`\u2713 PNG \uAC00\uC838\uC624\uAE30: ${file.name}`, 2e3);
       } catch (e) {
